@@ -92,6 +92,54 @@ jobs:
           elseif (-not (Select-String -Path scene-win.log -SimpleMatch -Pattern 'voce tolta dal menu (Ok(()))' -Quiet)) { Write-Error "il controllo degli aggiornamenti non è finito (curl di Windows)"; exit 1 }
           Remove-Item -Recurse -Force $dir
 
+      # avvio con Windows: l'attività pianificata all'accesso più la chiave Run (riserva), tutte e
+      # due con --accesso. L'attività la si fa partire davvero (schtasks /Run): l'app parte da
+      # Task Scheduler (oggetto job, priorità, cartella); una seconda copia con --accesso trova
+      # la prima e si chiude; spento, non resta niente. Il runner è amministratore e non entra
+      # mai davvero in Windows: la registrazione da utente normale e l'accesso vero non si provano
+      - name: Prova - avvio con Windows (attività pianificata e chiave Run)
+        continue-on-error: ${{ startsWith(github.ref, 'refs/tags/') }}
+        shell: pwsh
+        timeout-minutes: 4
+        run: |
+          $exe = (Resolve-Path app\target\release\ascii-zoo.exe).Path
+          $p = Start-Process $exe -ArgumentList '--avvio', 'on' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { Write-Error "--avvio on: uscita $($p.ExitCode)"; exit 1 }
+          $xml = (schtasks /Query /TN "ASCII Zoo" /XML) -join "`n"
+          if ($LASTEXITCODE -ne 0) { Write-Error "l'attività non c'è"; exit 1 }
+          foreach ($pezzo in @("<Command>$exe</Command>", '<Arguments>--accesso</Arguments>', '<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>',
+                               '<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>', '<LogonTrigger>')) {
+            if (-not $xml.Contains($pezzo)) { Write-Error "nell'attività manca $pezzo"; $xml; exit 1 }
+          }
+          # l'utente dell'accesso (Windows può riscriverlo come SID)
+          $xml -split "`n" | Select-String 'UserId|Priority|WorkingDirectory' | Out-Host
+          $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').AsciiZoo
+          "chiave Run: $run"
+          if ($run -ne "`"$exe`" --accesso") { Write-Error "chiave Run sbagliata: $run"; exit 1 }
+          # l'attività parte davvero
+          $env:ASCII_ZOO_LOG = '1'
+          schtasks /Run /TN "ASCII Zoo" | Out-Host
+          Start-Sleep 12
+          $prima = @(Get-Process ascii-zoo -ErrorAction SilentlyContinue)
+          if ($prima.Count -ne 1) { Write-Warning "da Task Scheduler non è partita ($($prima.Count) copie): il runner non ha una sessione interattiva?"; schtasks /Query /TN "ASCII Zoo" /V /FO LIST | Out-Host }
+          else {
+            "partita da Task Scheduler: pid $($prima[0].Id), priorità $($prima[0].PriorityClass)"
+            # una seconda copia con --accesso (come dalla chiave Run) cede il passo
+            $seconda = Start-Process $exe -ArgumentList '--accesso' -PassThru
+            if (-not $seconda.WaitForExit(15000)) { Write-Error "la copia con --accesso non si è chiusa"; exit 1 }
+            $dopo = @(Get-Process ascii-zoo -ErrorAction SilentlyContinue)
+            if ($dopo.Count -ne 1 -or $dopo[0].Id -ne $prima[0].Id) { Write-Error "con --accesso la prima copia non doveva cambiare"; exit 1 }
+            "la copia con --accesso si è chiusa, la prima resta"
+            Stop-Process -Id $prima[0].Id -Force
+          }
+          $p = Start-Process $exe -ArgumentList '--avvio', 'off' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { Write-Error "--avvio off: uscita $($p.ExitCode)"; exit 1 }
+          schtasks /Query /TN "ASCII Zoo" 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { Write-Error "spento, ma l'attività c'è ancora"; exit 1 }
+          if ((Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').AsciiZoo) { Write-Error "spento, ma la chiave Run c'è ancora"; exit 1 }
+          "spento: né attività né chiave Run"
+          $global:LASTEXITCODE = 0
+
       - name: Prova lo screensaver - un fotogramma per scena, senza finestra
         working-directory: dreams
         run: |

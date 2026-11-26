@@ -286,43 +286,204 @@ impl Config {
     }
 }
 
-/// Avvio con Windows: chiave Run dell'utente corrente.
+/// Avvio con Windows: due modi insieme, tutti e due con `--accesso`.
+/// - un'attività pianificata "ASCII Zoo" all'accesso dell'utente: parte appena si entra,
+///   senza aspettare i secondi che Windows lascia passare prima dei programmi in Run;
+/// - il valore "AsciiZoo" nella chiave Run dell'utente corrente, come prima: se l'attività
+///   non c'è (Windows non l'ha accettata) o non parte, l'app parte da lì.
+///
+/// Con `--accesso` una copia che trova l'app già avviata cede il passo e si chiude (win.rs):
+/// arrivi prima l'una o l'altra, parte una volta sola.
 #[cfg(windows)]
 pub mod autostart {
+    use std::os::windows::process::CommandExt;
     use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
     use winreg::RegKey;
 
     const RUN: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
     const NAME: &str = "AsciiZoo";
+    const ATTIVITA: &str = "ASCII Zoo";
+    /// l'argomento degli avvii automatici (vedi win.rs)
+    pub const ACCESSO: &str = "--accesso";
 
-    pub fn enabled() -> bool {
-        RegKey::predef(HKEY_CURRENT_USER)
-            .open_subkey_with_flags(RUN, KEY_READ)
-            .and_then(|k| k.get_value::<String, _>(NAME))
+    fn run_attuale() -> Option<String> {
+        RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(RUN, KEY_READ).and_then(|k| k.get_value::<String, _>(NAME)).ok()
+    }
+
+    fn valore_run(exe: &std::path::Path) -> String {
+        format!("\"{}\" {ACCESSO}", exe.display())
+    }
+
+    /// schtasks.exe di System32, senza la finestra nera della console
+    fn schtasks() -> std::process::Command {
+        let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+        let mut c = std::process::Command::new(format!(r"{root}\System32\schtasks.exe"));
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        c.creation_flags(CREATE_NO_WINDOW).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+        c
+    }
+
+    /// l'XML dell'attività, se c'è
+    fn attivita() -> Option<String> {
+        let o = schtasks().args(["/Query", "/TN", ATTIVITA, "/XML"]).output().ok()?;
+        o.status.success().then(|| String::from_utf8_lossy(&o.stdout).into_owned())
+    }
+
+    fn xml(s: &str) -> String {
+        s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&apos;")
+    }
+
+    /// L'attività all'accesso di questo utente (un'attività "per tutti" vorrebbe i permessi di
+    /// amministratore). Niente limite di durata (di serie sono 3 giorni), parte e resta anche a
+    /// batteria, priorità normale (di serie sarebbe più bassa), una sola copia.
+    fn testo_attivita(exe: &std::path::Path) -> String {
+        let utente = xml(&format!(
+            "{}\\{}",
+            std::env::var("USERDOMAIN").unwrap_or_default(),
+            std::env::var("USERNAME").unwrap_or_default()
+        ));
+        let cartella = exe.parent().map(|p| xml(&p.display().to_string())).unwrap_or_default();
+        let comando = xml(&exe.display().to_string());
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>ASCII Zoo: lo sfondo animato, appena si entra in Windows (si toglie dal menu dell'icona, "Avvia con Windows")</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <UserId>{utente}</UserId>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>{utente}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>false</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>5</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{comando}</Command>
+      <Arguments>{ACCESSO}</Arguments>
+      <WorkingDirectory>{cartella}</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+"#
+        )
+    }
+
+    /// registra (o rifà) l'attività per `exe`; false se Windows non l'accetta
+    fn registra(exe: &std::path::Path) -> bool {
+        let testo = testo_attivita(exe);
+        // schtasks vuole il file in UTF-16 con il BOM
+        let mut byte = vec![0xFF, 0xFE];
+        for u in testo.encode_utf16() {
+            byte.extend_from_slice(&u.to_le_bytes());
+        }
+        let file = std::env::temp_dir().join(format!("ascii-zoo-attivita-{}.xml", std::process::id()));
+        if std::fs::write(&file, byte).is_err() {
+            return false;
+        }
+        let r = schtasks().args(["/Create", "/TN", ATTIVITA, "/F", "/XML"]).arg(&file).output();
+        let _ = std::fs::remove_file(&file);
+        let ok = r.as_ref().is_ok_and(|o| o.status.success());
+        crate::shared::zoo_log!(
+            "avvio con Windows: attività pianificata {}",
+            if ok { "registrata".to_string() } else { format!("non accettata ({:?}): resta la chiave Run", r.map(|o| o.status)) }
+        );
+        ok
+    }
+
+    fn togli_attivita() {
+        let _ = schtasks().args(["/Delete", "/TN", ATTIVITA, "/F"]).output();
+    }
+
+    /// c'è l'attività? Letto dal registro (la cache di Task Scheduler, leggibile da tutti):
+    /// niente schtasks, che costerebbe un processo mentre si costruisce il menu all'avvio
+    fn attivita_registrata() -> bool {
+        use winreg::enums::HKEY_LOCAL_MACHINE;
+        RegKey::predef(HKEY_LOCAL_MACHINE)
+            .open_subkey_with_flags(format!(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tree\{ATTIVITA}"), KEY_READ)
             .is_ok()
     }
 
+    pub fn enabled() -> bool {
+        run_attuale().is_some() || attivita_registrata()
+    }
+
     pub fn set(on: bool) {
-        let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(RUN, KEY_WRITE) else { return };
         if on {
-            if let Ok(exe) = std::env::current_exe() {
-                let _ = key.set_value(NAME, &format!("\"{}\"", exe.display()));
+            let Ok(exe) = std::env::current_exe() else { return };
+            if let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(RUN, KEY_WRITE) {
+                let _ = key.set_value(NAME, &valore_run(&exe));
             }
+            registra(&exe);
         } else {
-            let _ = key.delete_value(NAME);
+            if let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(RUN, KEY_WRITE) {
+                let _ = key.delete_value(NAME);
+            }
+            togli_attivita();
         }
     }
 
     /// L'exe non si installa: una versione nuova può stare in un'altra cartella. Se l'avvio
-    /// con Windows è attivo ma lancia un altro exe, lo si fa puntare a questo, la copia
-    /// appena avviata. Spento resta spento; si tocca solo il valore "AsciiZoo".
+    /// con Windows è attivo (in uno dei due modi) ma lancia un altro exe, o è quello di una
+    /// versione fino alla 0.9 (solo la chiave Run, senza `--accesso`), si rifanno tutti e due
+    /// per questo. Spento resta spento. Chiama schtasks: va fatto fuori dal thread principale.
     pub fn aggiorna() {
-        let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(RUN, KEY_READ | KEY_WRITE) else { return };
-        let Ok(attuale) = key.get_value::<String, _>(NAME) else { return };
         let Ok(exe) = std::env::current_exe() else { return };
-        let nuovo = format!("\"{}\"", exe.display());
-        if !attuale.eq_ignore_ascii_case(&nuovo) && !super::provvisorio(&exe) {
-            let _ = key.set_value(NAME, &nuovo);
+        if super::provvisorio(&exe) {
+            return;
+        }
+        let run = run_attuale();
+        let att = attivita();
+        if run.is_none() && att.is_none() {
+            return;
+        }
+        let giusto = valore_run(&exe);
+        if !run.as_deref().is_some_and(|r| r.eq_ignore_ascii_case(&giusto)) {
+            if let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(RUN, KEY_WRITE) {
+                let _ = key.set_value(NAME, &giusto);
+            }
+        }
+        // l'attività: c'è e lancia questo exe? (confronto senza maiuscole, come i percorsi di Windows)
+        let comando = format!("<Command>{}</Command>", xml(&exe.display().to_string())).to_lowercase();
+        if !att.is_some_and(|a| a.to_lowercase().contains(&comando)) {
+            registra(&exe);
+        }
+    }
+
+    #[cfg(test)]
+    mod test {
+        #[test]
+        fn xml_attivita() {
+            let t = super::testo_attivita(std::path::Path::new(r"C:\Giochi & Co\ascii-zoo.exe"));
+            assert!(t.contains(r"<Command>C:\Giochi &amp; Co\ascii-zoo.exe</Command>"), "{t}");
+            assert!(t.contains("<WorkingDirectory>C:\\Giochi &amp; Co</WorkingDirectory>"), "{t}");
+            assert!(t.contains("<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>"));
+            assert!(t.contains("<Arguments>--accesso</Arguments>"));
         }
     }
 }

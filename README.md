@@ -127,7 +127,7 @@ The app only writes its settings file (and an autostart entry or the screensaver
 
 ### Uninstall
 
-1. In the tray / menu bar icon untick **Avvia con Windows** / **Apri al login** (it removes the autostart entry), then choose **Esci** (quit): the normal wallpaper comes back.
+1. In the tray / menu bar icon untick **Avvia con Windows** / **Apri al login** (it removes the autostart entries: on Windows a scheduled task named **ASCII Zoo**, which starts it right at sign-in, and a backup entry in the Run key; turning it off only in Settings → Apps → Startup leaves the task), then choose **Esci** (quit): the normal wallpaper comes back.
 2. If you use the screensaver, on Windows: open **Change screen saver** (search "screen saver" in Start), pick **(None)** and press OK, then delete `%LOCALAPPDATA%\AsciiZoo\ascii-zoo.scr`; on macOS: pick another screen saver in the settings, then delete only `ASCII Zoo.saver` from `~/Library/Screen Savers`.
 3. Delete the app: `ascii-zoo.exe` on Windows, **ASCII Zoo** from Applications on macOS. On Linux run the install command with `--disinstalla`:
    `curl -fsSL https://raw.githubusercontent.com/ascii-things/ascii-zoo/main/linux/install.sh | bash -s -- --disinstalla`

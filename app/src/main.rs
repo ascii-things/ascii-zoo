@@ -60,6 +60,13 @@ fn main() {
         println!("ascii-zoo {}", env!("CARGO_PKG_VERSION"));
         return;
     }
+    // "ascii-zoo --avvio on|off": accende o spegne l'avvio automatico come la voce del menu
+    // (per le prove in CI e per chi installa da uno script); esce con 0 se ora è come chiesto
+    if std::env::args().nth(1).as_deref() == Some("--avvio") {
+        let on = std::env::args().nth(2).as_deref() == Some("on");
+        config::autostart::set(on);
+        std::process::exit(if config::autostart::enabled() == on { 0 } else { 1 });
+    }
     if std::env::args().nth(1).as_deref() == Some("--statistiche") {
         nerd::stampa();
         return;

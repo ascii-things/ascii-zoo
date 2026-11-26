@@ -602,11 +602,27 @@ pub fn run() {
         // chiude lei e questa, appena avviata, prende il suo posto. Va fatto prima di creare
         // la finestra di controllo, se no FindWindow troverebbe la nostra.
         let mutex = CreateMutexW(None, true, w!("AsciiZoo.SingleInstance"));
-        if GetLastError() == ERROR_ALREADY_EXISTS && !mutex.as_ref().is_ok_and(|m| prendi_il_posto(*m)) {
+        let gia_avviata = GetLastError() == ERROR_ALREADY_EXISTS;
+        // all'accesso partono sia l'attività pianificata sia la chiave Run (vedi autostart):
+        // la seconda trova la prima già avviata e lascia stare
+        if gia_avviata && std::env::args().any(|a| a == autostart::ACCESSO) {
+            zoo_log!("avvio con Windows: ASCII Zoo è già partito, questa copia si chiude");
             return;
         }
-        // "Avvia con Windows" segue la copia appena avviata
-        autostart::aggiorna();
+        if gia_avviata && !mutex.as_ref().is_ok_and(|m| prendi_il_posto(*m)) {
+            return;
+        }
+        // "Avvia con Windows" segue la copia appena avviata (chiama schtasks: in un thread)
+        std::thread::spawn(autostart::aggiorna);
+        // all'accesso l'app può partire prima che Explorer abbia fatto il desktop e la barra
+        // delle applicazioni: li si aspetta (fino a un minuto)
+        let attesa = std::time::Instant::now();
+        while !desktop::pronto() && attesa.elapsed() < std::time::Duration::from_secs(60) {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        if attesa.elapsed().as_millis() >= 200 {
+            zoo_log!("avvio: aspettato il desktop di Explorer per {} ms", attesa.elapsed().as_millis());
+        }
         // e anche lo screensaver, se è installato: dopo un aggiornamento dell'app è la versione
         // nuova. In un thread a parte: legge per intero due eseguibili per confrontarli, e
         // all'accesso il disco è lento (lo sfondo non lo deve aspettare)

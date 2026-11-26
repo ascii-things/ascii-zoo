@@ -26,6 +26,32 @@ unsafe extern "system" fn find_icons_host(top: HWND, out: LPARAM) -> BOOL {
     BOOL(1)
 }
 
+unsafe extern "system" fn cerca_icone(top: HWND, out: LPARAM) -> BOOL {
+    if FindWindowExW(Some(top), None, w!("SHELLDLL_DefView"), None).is_ok() {
+        *(out.0 as *mut bool) = true;
+        return BOOL(0);
+    }
+    BOOL(1)
+}
+
+/// Explorer ha già fatto il desktop (Progman con le icone, SHELLDLL_DefView, dentro di lui o
+/// in una WorkerW) e la barra delle applicazioni (dove va l'icona)? All'accesso l'app può
+/// arrivare prima di lui.
+pub fn pronto() -> bool {
+    unsafe {
+        let Ok(progman) = FindWindowW(w!("Progman"), None) else { return false };
+        if FindWindowW(w!("Shell_TrayWnd"), None).is_err() {
+            return false;
+        }
+        if FindWindowExW(Some(progman), None, w!("SHELLDLL_DefView"), None).is_ok() {
+            return true;
+        }
+        let mut trovate = false;
+        let _ = EnumWindows(Some(cerca_icone), LPARAM(&mut trovate as *mut bool as isize));
+        trovate
+    }
+}
+
 /// Rende `hwnd` figlia del desktop. Restituisce la finestra genitore usata.
 pub unsafe fn attach(hwnd: HWND) -> Option<Embed> {
     let progman = FindWindowW(w!("Progman"), None).ok()?;
