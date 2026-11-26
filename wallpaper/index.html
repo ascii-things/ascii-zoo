@@ -1418,20 +1418,20 @@ h1 {
     }
     return best;
   }
-  // acciambellato sul cuscino: una palla con la testa infilata nella coda
+  // acciambellato sul cuscino: una palla con la testa infilata nella coda. Il corpo più
+  // tenue, testa e coda più accese: così si distinguono anche con il mantello tutto uguale
   function micioDorme(x, y, c, o) {
-    var r = 0.27 * (1 + 0.025 * Math.sin(c.ph)), d = Math.sqrt(x * x + y * y), a = Math.atan2(y, x);
-    var ta = 0.55, hx = Math.cos(ta) * 0.17, hy = Math.sin(ta) * 0.17;
-    var ex = x - hx, ey = y - hy, dh = (ex * ex + ey * ey) / 0.0144;
-    // orecchie verso fuori
-    var ox = Math.cos(ta), oy = Math.sin(ta);
-    if (nelTriangolo(x, y, hx + ox * 0.08 - oy * 0.09, hy + oy * 0.08 + ox * 0.09, hx + ox * 0.2 - oy * 0.03, hy + oy * 0.2 + ox * 0.03,
-                     hx + ox * 0.13 - oy * 0.13, hy + oy * 0.13 + ox * 0.13)) { o.v = 0.8; o.c = mantello(c, 0.4, 0, 4); return; }
-    if (dh < 1) { o.v = 0.95 - 0.2 * dh; o.c = mantello(c, 0.4, ex, 1); return; }
+    var r = 0.26 * (1 + 0.025 * Math.sin(c.ph)), d = Math.sqrt(x * x + y * y), a = Math.atan2(y, x);
+    var ta = 0.55, ox = Math.cos(ta), oy = Math.sin(ta), hx = ox * 0.2, hy = oy * 0.2;
+    // orecchie, in fuori
+    if (nelTriangolo(x, y, hx + ox * 0.07 - oy * 0.1, hy + oy * 0.07 + ox * 0.1, hx + ox * 0.2 - oy * 0.04, hy + oy * 0.2 + ox * 0.04,
+                     hx + ox * 0.12 - oy * 0.15, hy + oy * 0.12 + ox * 0.15)) { o.v = 0.85; o.c = mantello(c, 0.4, 0, 4); return; }
+    var ex = x - hx, ey = y - hy, dh = (ex * ex + ey * ey) / 0.0121;
+    if (dh < 1) { o.v = 1 - 0.15 * dh; o.c = mantello(c, 0.4, ex, 1); return; }
     // la coda lungo il bordo, dalla schiena fino al muso
-    var da = angDiff(a, ta + 0.4);
-    if (da > 0 && da < 2.6 && Math.abs(d - r) < Math.max(0.045, c.mt * 0.6)) { o.v = 0.75; o.c = mantello(c, -0.5, 0, 2); return; }
-    if (d < r) { o.v = 0.9 - 0.3 * (d / r) * (d / r); o.c = mantello(c, x * 0.9, y, 0); }
+    var da = angDiff(a, ta + 0.45);
+    if (da > 0 && da < 2.7 && Math.abs(d - r + 0.02) < Math.max(0.05, c.mt * 0.6)) { o.v = 0.95; o.c = mantello(c, -0.5, 0, 2); return; }
+    if (d < r) { o.v = 0.5 + 0.2 * (1 - d / r); o.c = mantello(c, x * 0.9, y, 0); }
   }
 
   SPECIES.push({
