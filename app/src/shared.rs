@@ -45,7 +45,7 @@ pub const PAESAGGI: [(&str, &str); 7] = [
     ("aurora", "Aurora"),
     ("vita", "Gioco della vita"),
     ("mare", "Mare di notte"),
-    ("neve", "Neve"),
+    ("inverno", "Inverno"),
 ];
 
 /// una voce del menu "Sfondo": un animale o un paesaggio

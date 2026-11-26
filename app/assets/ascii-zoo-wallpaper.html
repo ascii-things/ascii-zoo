@@ -3224,13 +3224,13 @@ h1 {
   });
   // ==== fine mare ====
 
-  // ==== paesaggio: neve ====
-  // Neve: una notte d'inverno. Nevica a tre profondità con il vento che va e viene, sugli
+  // ==== paesaggio: inverno ====
+  // Inverno: una notte con la neve. Nevica a tre profondità con il vento che va e viene, sugli
   // abeti con la neve sui rami e su una baita con la finestra accesa e il fumo dal camino;
   // la luna e qualche stella. Un clic è una folata: i fiocchi intorno volano via e la neve
   // per terra si alza in uno sbuffo.
   scena({
-    id: 'neve', nome: 'Neve',
+    id: 'inverno', nome: 'Inverno',
     // 0 fiocchi vicini, 1 fiocchi lontani, 2 neve, 3 neve in ombra, 4-5 abeti, 6 legno,
     // 7 finestra accesa, 8 fumo, 9 luna, 10 stelle, 11 colline, 12 tetto, 13 tronchi
     colori: ['#f4f8ff', '#a3b5d8', '#dfe7f5', '#7f92b8', '#1f5847', '#2e7a5b', '#7a5638', '#ffcf73',
@@ -3436,7 +3436,7 @@ h1 {
       }
     }
   });
-  // ==== fine neve ====
+  // ==== fine inverno ====
 
   /* ------------------------------------------------------------------ */
   /* File dell'utente. L'app mette in window.ZOO_SCENE i file .js della   */
@@ -3915,8 +3915,8 @@ h1 {
   /* Neve delle feste: dal 1° dicembre al 6 gennaio un po' di neve cade su tutti gli sfondi,
      davanti a tutto ma dietro le parti più luminose degli animali (put la scarta dove c'è già
      qualcosa di più acceso). Non sugli sfondi dove non ha senso: sott'acqua, sotto la pioggia,
-     e nel paesaggio della neve, che ha la sua. Si spegne dal menu ("Neve durante le feste"). */
-  var SENZA_NEVE = { meduse: 1, pioggia: 1, neve: 1 };
+     nel paesaggio Inverno e nella scena di esempio neve.js, che hanno la loro. Si spegne dal menu ("Neve durante le feste"). */
+  var SENZA_NEVE = { meduse: 1, pioggia: 1, inverno: 1, neve: 1 };
   function festeOggi() {
     var d = new Date();
     return d.getMonth() === 11 || (d.getMonth() === 0 && d.getDate() <= 6);

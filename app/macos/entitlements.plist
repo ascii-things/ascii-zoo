@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Le eccezioni al runtime protetto (hardened runtime), che serve solo con la firma Developer ID
+     e la notarizzazione (vedi docs/FIRMA.md). Con la firma "ad hoc" non si usa. -->
+<plist version="1.0">
+<dict>
+  <!-- widget "In riproduzione": AppleScript a Musica e Spotify (macOS chiede comunque il permesso
+       Automazione, vedi NSAppleEventsUsageDescription in Info.plist) -->
+  <key>com.apple.security.automation.apple-events</key>
+  <true/>
+</dict>
+</plist>

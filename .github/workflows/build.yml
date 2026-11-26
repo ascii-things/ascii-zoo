@@ -144,7 +144,7 @@ jobs:
         working-directory: dreams
         run: |
           cargo build --release --locked
-          for s in stelle pioggia fuoco aurora vita mare neve; do
+          for s in stelle pioggia fuoco aurora vita mare inverno; do
             ./target/release/ascii-dreams.exe --png "prova-$s.png" --scena "$s" --secondi 2
             test -s "prova-$s.png"
           done
@@ -223,6 +223,10 @@ jobs:
           cargo build --release --locked --target x86_64-apple-darwin
 
       - name: App universale e DMG
+        env:
+          # firma con il certificato Developer ID, se c'è (vedi docs/FIRMA.md)
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
         run: |
           version=$(grep -m1 '^version' app/Cargo.toml | cut -d'"' -f2)
           app="build/ASCII Zoo.app"
@@ -246,11 +250,34 @@ jobs:
           sips --resampleHeight 58 dreams/docs/aurora.png --out build/miniatura.png
           sips -c 58 90 build/miniatura.png --out "$saver/Contents/Resources/thumbnail.png"
           sips -g pixelWidth -g pixelHeight "$saver"/Contents/Resources/thumbnail*.png
-          # firma "ad hoc": non è un certificato Apple, ma i Mac con Apple Silicon
-          # non avviano codice senza nessuna firma. Prima il modulo, poi l'app che lo contiene
-          codesign --force --sign - "$saver"
+          # Senza segreti la firma è "ad hoc": non è un certificato Apple, ma i Mac con Apple
+          # Silicon non avviano codice senza nessuna firma. Con i segreti MACOS_CERT_P12 (il .p12
+          # del certificato "Developer ID Application" in base64) e MACOS_CERT_PASSWORD la firma
+          # è quella vera, con il runtime protetto e l'ora certificata che chiede la
+          # notarizzazione (passo "Notarizzazione del DMG"). Prima il modulo, poi l'app che lo contiene
+          firma="-"; opzioni=()
+          if [ -n "${MACOS_CERT_P12:-}" ]; then
+            kc="$RUNNER_TEMP/firma.keychain-db"; kp=$(uuidgen)
+            echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+            security create-keychain -p "$kp" "$kc"
+            security set-keychain-settings -lut 7200 "$kc"
+            security unlock-keychain -p "$kp" "$kc"
+            security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+            rm -f "$RUNNER_TEMP/cert.p12"
+            security set-key-partition-list -S apple-tool:,apple: -s -k "$kp" "$kc" >/dev/null
+            security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+            firma=$(security find-identity -v -p codesigning "$kc" | grep -m1 "Developer ID Application" | awk '{print $2}')
+            [ -n "$firma" ] || { echo "::error::nel .p12 non c'è un'identità \"Developer ID Application\""; exit 1; }
+            opzioni=(--options runtime --timestamp)
+            echo "firma con il certificato Developer ID ($firma)"
+          fi
+          codesign --force "${opzioni[@]}" --sign "$firma" "$saver"
           cp -R "$saver" "$app/Contents/Resources/"
-          codesign --force --deep --sign - "$app"
+          if [ "$firma" = "-" ]; then
+            codesign --force --deep --sign - "$app"
+          else
+            codesign --force "${opzioni[@]}" --entitlements app/macos/entitlements.plist --sign "$firma" "$app"
+          fi
           codesign --verify --strict --verbose=2 "$app"
           codesign --verify --strict --verbose=2 "$app/Contents/Resources/ASCII Zoo.saver"
           mkdir build/dmg
@@ -454,6 +481,35 @@ jobs:
             screencapture -x prova-screensaver/impostazioni-lista.png
           fi
           osascript -e 'tell application "System Settings" to quit' || true
+
+      # Notarizzazione: solo per i tag e solo con il certificato e la chiave API di App Store
+      # Connect nei segreti (MACOS_NOTARY_KEY, il .p8 in base64; MACOS_NOTARY_KEY_ID;
+      # MACOS_NOTARY_ISSUER; vedi docs/FIRMA.md). Apple controlla il DMG e il "biglietto" si
+      # attacca al DMG (staple): macOS lo apre senza "Impossibile aprire l'app". Se Apple dice di
+      # no, la Release esce lo stesso con il DMG firmato ma non notarizzato.
+      - name: Notarizzazione del DMG
+        if: startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER }}
+        run: |
+          if [ -z "${MACOS_CERT_P12:-}" ] || [ -z "${MACOS_NOTARY_KEY:-}" ]; then
+            echo "niente certificato o chiave per la notarizzazione: il DMG resta com'è"; exit 0
+          fi
+          # l'SHA256 si rifà alla fine comunque, anche se qualcosa va storto (il DMG cambia)
+          trap 'cd "$GITHUB_WORKSPACE/dist" && shasum -a 256 ascii-zoo-macos.dmg | tee ascii-zoo-macos.dmg.sha256' EXIT
+          id=$(security find-identity -v -p codesigning | grep -m1 "Developer ID Application" | awk '{print $2}')
+          codesign --force --timestamp --sign "$id" dist/ascii-zoo-macos.dmg
+          echo "$MACOS_NOTARY_KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          xcrun notarytool submit dist/ascii-zoo-macos.dmg --key "$RUNNER_TEMP/notary.p8" \
+            --key-id "$MACOS_NOTARY_KEY_ID" --issuer "$MACOS_NOTARY_ISSUER" --wait --timeout 30m
+          rm -f "$RUNNER_TEMP/notary.p8"
+          xcrun stapler staple dist/ascii-zoo-macos.dmg
+          xcrun stapler validate dist/ascii-zoo-macos.dmg
+          spctl --assess --type open --context context:primary-signature -v dist/ascii-zoo-macos.dmg
 
       - uses: actions/upload-artifact@v4
         with:

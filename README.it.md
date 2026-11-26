@@ -55,11 +55,11 @@ Oltre agli animali, sette paesaggi senza animali: le sette scene dello screensav
 | **Aurora** | tende di luce verde e viola sopra le montagne, le stelle che brillano, il lago che riflette tutto |
 | **Gioco della vita** | le cellule di Conway cambiano colore invecchiando e lasciano una scia; se il mondo si ferma ne arrivano di nuove |
 | **Mare di notte** | la luna con i crateri, le nuvole, il riflesso che tremola sulle onde e una barchetta a vela che attraversa |
-| **Neve** | una notte d'inverno: nevica a tre profondità con il vento che va e viene, sugli abeti e su una baita con la finestra accesa e il fumo dal camino; un clic è una folata, e vicino a terra la neve si alza in uno sbuffo |
+| **Inverno** | una notte con la neve: nevica a tre profondità con il vento che va e viene, sugli abeti e su una baita con la finestra accesa e il fumo dal camino; un clic è una folata, e vicino a terra la neve si alza in uno sbuffo |
 
 Sono scritti come le [scene tue](#scene-tue): anche loro si trovano come file in `di-serie` e si possono copiare e cambiare.
 
-**Neve durante le feste.** Dal 1° dicembre al 6 gennaio un po' di neve cade su tutti gli sfondi, davanti a tutto ma dietro le parti più luminose degli animali (non sott'acqua con le meduse, non sotto la pioggia e non nel paesaggio Neve, che ha la sua). Si spegne togliendo la spunta a **Neve durante le feste** nel menu.
+**Neve durante le feste.** Dal 1° dicembre al 6 gennaio un po' di neve cade su tutti gli sfondi, davanti a tutto ma dietro le parti più luminose degli animali (non sott'acqua con le meduse, non sotto la pioggia e non nel paesaggio Inverno, che ha la sua). Si spegne togliendo la spunta a **Neve durante le feste** nel menu.
 
 ## I widget
 

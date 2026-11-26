@@ -1,4 +1,4 @@
-//! Neve: una notte d'inverno. Nevica a tre profondità con il vento che va e viene, sugli
+//! Inverno: una notte con la neve. Nevica a tre profondità con il vento che va e viene, sugli
 //! abeti con la neve sui rami e su una baita con la finestra accesa e il fumo dal camino;
 //! la luna e qualche stella. (Lo stesso paesaggio dello sfondo, wallpaper/index.html.)
 
