@@ -22,7 +22,7 @@ pub const URL: &str = "http://zoo.localhost/";
 pub const URL: &str = "zoo://localhost/";
 
 /// gli animali di serie, nello stesso ordine della pagina: (id, nome nel menu)
-pub const SPECIE: [(&str, &str); 9] = [
+pub const SPECIE: [(&str, &str); 11] = [
     ("farfalle", "Farfalle"),
     ("meduse", "Meduse"),
     ("libellule", "Libellule"),
@@ -32,6 +32,8 @@ pub const SPECIE: [(&str, &str); 9] = [
     ("granchi", "Granchi"),
     ("cavalli", "Cavalli"),
     ("anatre", "Anatre"),
+    ("gatti", "Gatti"),
+    ("topi", "Topi"),
 ];
 
 /// i paesaggi di serie, dopo gli animali nella pagina: sfondi senza animali, gli stessi
@@ -415,11 +417,11 @@ pub struct Core {
     pomodoro: Pomodoro,
     /// ultimo titolo del sottomenu "Pomodoro" (si cambia solo quando cambia)
     pomodoro_titolo: String,
-    /// "Rotazione > Spenta": l'animale che la pagina dice di mostrare (1..=9), quando risponde
+    /// "Rotazione > Spenta": lo sfondo che la pagina dice di mostrare (1.., come `animale`), quando risponde
     animale_mostrato: std::sync::Arc<std::sync::Mutex<Option<u32>>>,
 }
 
-/// l'animale che la pagina mostra adesso: 1..=9 come la voce "Animale" (0 = non si sa)
+/// lo sfondo che la pagina mostra adesso: 1.. come `animale` nelle impostazioni (0 = non si sa)
 const JS_ANIMALE: &str = "(function () { try { return window.AsciiZoo && window.asciiZoo && window.asciiZoo.species \
     ? AsciiZoo.SPECIES.indexOf(asciiZoo.species) + 1 : 0; } catch (e) { return 0; } })()";
 

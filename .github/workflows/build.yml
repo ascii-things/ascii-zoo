@@ -74,8 +74,8 @@ jobs:
           Get-Content scene-win.log | Select-String 'scena'
           $file = @(Get-ChildItem (Join-Path $dir 'di-serie') -Filter *.js)
           "di-serie: $($file.Count) file: $($file.Name -join ', ')"
-          # 9 animali e 6 paesaggi
-          if ($file.Count -ne 15) { Write-Error "in di-serie ci sono $($file.Count) file invece di 15"; exit 1 }
+          # 11 animali e 6 paesaggi
+          if ($file.Count -ne 17) { Write-Error "in di-serie ci sono $($file.Count) file invece di 17"; exit 1 }
           if (-not (Select-String -Path scene-win.log -Pattern 'scena lucciole: "Lucciole"' -Quiet)) { Write-Error "lucciole.js non letta"; exit 1 }
           Remove-Item -Recurse -Force $dir
 
@@ -331,8 +331,10 @@ jobs:
           kill "$pid"
 
       # scene tue: con la cartella delle scene l'app scrive un file per ogni animale di serie in
-      # scene/di-serie (9 animali e 6 paesaggi), e lucciole.js diventa la voce 16 del menu Sfondo
-      # (dopo "A rotazione", i 9 animali e i 6 paesaggi): nella foto l'erba con le lucciole
+      # scene/di-serie (11 animali e 6 paesaggi), e lucciole.js è la voce 18 del menu Sfondo (dopo
+      # "A rotazione", gli 11 animali e i 6 paesaggi): nella foto l'erba con le lucciole. Il
+      # config.json è scritto come una versione fino alla 0.8 (9 animali, posizione 16, senza
+      # animali_di_serie): l'app lo sposta da sola alla 18, così si prova anche la migrazione
       - name: Prova - scene tue
         continue-on-error: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: |
@@ -350,7 +352,7 @@ jobs:
           grep "scena" scene-macos.log || true
           ls "$dir/scene/di-serie"
           n=$(ls "$dir/scene/di-serie"/*.js | wc -l | tr -d ' ')
-          [ "$n" = 15 ] || { echo "::error::in di-serie ci sono $n file invece di 15"; exit 1; }
+          [ "$n" = 17 ] || { echo "::error::in di-serie ci sono $n file invece di 17"; exit 1; }
           grep -q 'scena lucciole: "Lucciole"' scene-macos.log || { echo "::error::lucciole.js non letta"; exit 1; }
           head -3 "$dir/scene/di-serie/koi.js"
           rm -rf "$dir/scene"

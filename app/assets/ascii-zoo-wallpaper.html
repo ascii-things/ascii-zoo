@@ -1333,6 +1333,391 @@ h1 {
   });
   // ==== fine anatre ====
 
+  // ==== animale: gatti ====
+  // Gatti: visti dall'alto, in un salotto. Camminano piano, si siedono a lavarsi, ogni
+  // tanto uno fa una corsa pazza o va a dare una zampata al gomitolo; dormono
+  // acciambellati sui cuscini. Al clic arriva un topo: i gatti vicini lo rincorrono, lo
+  // prendono, ci giocano un po' e lo lasciano andare, finché il topo non trova una tana
+  // (un topo che passa vicino a un gatto che dorme lo sveglia).
+  // c.state: 0 cammina, 1 seduto, 2 corsa pazza, 3 verso il gomitolo. c.coat: il mantello.
+  // I topi stanno nello stato della scena (s.topi), vedi SCENES.gatti.
+  // il topo più vicino da rincorrere: non in bocca a un gatto, non nella tana, non appena lasciato
+  function topoDaPrendere(s, c, r) {
+    var best = r * r, m = null;
+    for (var i = 0; i < s.topi.length; i++) {
+      var q = s.topi[i];
+      if (q.preso || q.dentro > 0 || q.libero > 0 || q.prese >= 3) continue;
+      var d2 = (q.x - c.x) * (q.x - c.x) + (q.y - c.y) * (q.y - c.y);
+      if (d2 < best) { best = d2; m = q; }
+    }
+    return m;
+  }
+  // il gatto apre la bocca: il topo scappa, con un attimo di vantaggio
+  function lasciaTopo(c, m, w) {
+    m.preso = null; c.preso = null; m.libero = 0.7; m.sp = 4;
+    m.th = c.th + (w.rnd() < 0.5 ? -1 : 1) * (0.8 + w.rnd() * 1.2);
+    // dopo due prese il gioco stufa
+    c.noia = m.prese >= 2 ? 8 + w.rnd() * 8 : 0.5 + w.rnd() * 0.7;
+    c.state = 1; c.timer = 0.8 + w.rnd() * 1.2;
+  }
+  // colore del mantello in un punto (parte: 0 corpo, 1 testa, 2 coda, 3 zampe, 4 orecchie)
+  function mantello(c, x, y, parte) {
+    var sd = c.seed * 50, ay = y < 0 ? -y : y;
+    var riga = Math.sin(x * 34 + Math.sin(y * 9 + sd) * 0.8 + sd) > 0.4;
+    switch (c.coat) {
+      case 0: return parte === 3 || (parte === 1 && x > 0.44) ? 0 : riga && ay > 0.025 ? 2 : 1; // rosso tigrato
+      case 1: return parte === 3 ? 0 : riga && ay > 0.025 ? 4 : 3;                              // grigio tigrato
+      case 2: return parte === 4 ? 6 : 5;                                                        // nero
+      case 3: return parte === 4 ? 11 : 0;                                                       // bianco
+      case 4: {                                                                                  // tricolore
+        var n = Math.sin(x * 9 + sd) * Math.cos(y * 11 + sd * 0.7) + 0.6 * Math.sin(x * 4.3 - y * 5 + sd * 1.3);
+        return parte === 3 ? 0 : n > 0.5 ? 1 : n < -0.55 ? 5 : 0;
+      }
+      case 5: return parte === 3 || (parte === 1 && x > 0.43) || (parte === 0 && x > 0.17 && ay < 0.08) ? 0 : 5; // con lo sparato
+      default: return parte === 0 || (parte === 1 && x < 0.38) ? 7 : 8;                          // siamese
+    }
+  }
+  // dentro il triangolo abc?
+  function nelTriangolo(px, py, ax, ay, bx, by, cx, cy) {
+    var d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
+    var d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
+    var d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
+    return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+  }
+  // la coda come spezzata di 7 punti (coordinate della forma), rifatta a ogni fotogramma
+  function codaMicio(c) {
+    var P = c.coda || (c.coda = new Float32Array(14)), si = c.sit, base = -0.27 + 0.05 * si, L = 0.52;
+    var lato = c.lato, sw = Math.sin(c.tailPh);
+    for (var k = 0; k < 7; k++) {
+      var u = k / 6;
+      // in piedi: dietro, piegata a uncino verso un lato, ondeggia; seduto: avvolta intorno al
+      // corpo, la punta che batte
+      var wx = base - L * u * (1 - 0.25 * u * u), wy = 0.14 * Math.sin(c.tailPh * 0.8 - u * 2.4) * u + lato * 0.2 * u * u * u;
+      var a = Math.PI - lato * (0.3 + 2.2 * u), R = 0.17 + 0.05 * u;
+      var sx = -0.06 + Math.cos(a) * R, sy = Math.sin(a) * R + (u > 0.8 ? lato * 0.04 * sw : 0);
+      P[k * 2] = lerp(wx, sx, si); P[k * 2 + 1] = lerp(wy, sy, si);
+    }
+    // il riquadro della coda: fuori non si cerca neanche
+    var B = c.codaB || (c.codaB = [0, 0, 0, 0]);
+    B[0] = B[1] = P[0]; B[2] = B[3] = P[1];
+    for (k = 1; k < 7; k++) {
+      B[0] = Math.min(B[0], P[k * 2]); B[1] = Math.max(B[1], P[k * 2]);
+      B[2] = Math.min(B[2], P[k * 2 + 1]); B[3] = Math.max(B[3], P[k * 2 + 1]);
+    }
+  }
+  function distCoda(c, x, y) {
+    var P = c.coda, B = c.codaB, best = 9, m = 0.08;
+    if (x < B[0] - m || x > B[1] + m || y < B[2] - m || y > B[3] + m) return best;
+    for (var k = 0; k < 6; k++) {
+      var d = segD(x, y, P[k * 2], P[k * 2 + 1], P[k * 2 + 2], P[k * 2 + 3]);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+  // acciambellato sul cuscino: una palla con la testa infilata nella coda
+  function micioDorme(x, y, c, o) {
+    var r = 0.27 * (1 + 0.025 * Math.sin(c.ph)), d = Math.sqrt(x * x + y * y), a = Math.atan2(y, x);
+    var ta = 0.55, hx = Math.cos(ta) * 0.17, hy = Math.sin(ta) * 0.17;
+    var ex = x - hx, ey = y - hy, dh = (ex * ex + ey * ey) / 0.0144;
+    // orecchie verso fuori
+    var ox = Math.cos(ta), oy = Math.sin(ta);
+    if (nelTriangolo(x, y, hx + ox * 0.08 - oy * 0.09, hy + oy * 0.08 + ox * 0.09, hx + ox * 0.2 - oy * 0.03, hy + oy * 0.2 + ox * 0.03,
+                     hx + ox * 0.13 - oy * 0.13, hy + oy * 0.13 + ox * 0.13)) { o.v = 0.8; o.c = mantello(c, 0.4, 0, 4); return; }
+    if (dh < 1) { o.v = 0.95 - 0.2 * dh; o.c = mantello(c, 0.4, ex, 1); return; }
+    // la coda lungo il bordo, dalla schiena fino al muso
+    var da = angDiff(a, ta + 0.4);
+    if (da > 0 && da < 2.6 && Math.abs(d - r) < Math.max(0.045, c.mt * 0.6)) { o.v = 0.75; o.c = mantello(c, -0.5, 0, 2); return; }
+    if (d < r) { o.v = 0.9 - 0.3 * (d / r) * (d / r); o.c = mantello(c, x * 0.9, y, 0); }
+  }
+
+  SPECIES.push({
+    id: 'gatti', label: 'Gatti', dot: '#f2a144',
+    // 0 bianco, 1 rosso, 2 strisce rosse, 3 grigio, 4 strisce grigie, 5 nero, 6 nero scuro,
+    // 7 crema, 8 bruno (siamese), 9 occhi verdi, 10 occhi gialli, 11 naso rosa
+    pal: ['#f4efe6', '#f2a144', '#c0641f', '#a8aebb', '#6c7282', '#5a6072', '#3c404d', '#ecd6aa', '#7a5a40',
+          '#a6e86a', '#ffcf4a', '#f4a6c8'],
+    dens: 1100, min: 4, max: 13, smin: 10, smax: 18, off: -0.18, rad: 0.82,
+    sosta: [14, 22], // tanto quanto dormono su un cuscino (secondi)
+    clicTesto: 'arriva un topo',
+    clic: function (w, x, y, s) {
+      w.ripple(x, y, 4, 0.6, 0);
+      if (!s || !s.topi || s.topi.length >= 6) return;
+      s.topi.push({ x: x, y: y, th: w.rnd() * TAU, sp: 0, ph: 0, seed: w.rnd(), nato: w.t, a: 0,
+                    preso: null, tieni: 0, prese: 0, libero: 0.5, tana: null, scegli: 0, dentro: 0 });
+    },
+    spawn: function (c, w) {
+      c.th = w.rnd() * TAU; c.hd = c.th; c.state = 0; c.timer = 1 + w.rnd() * 5;
+      c.curl = 0; c.sit = 0; c.lato = w.rnd() < 0.5 ? -1 : 1; c.tailPh = w.rnd() * TAU; c.gait = 0;
+      c.testa = 0; c.lecca = 0; c.noia = 0; c.preso = null;
+      var r = w.rnd();
+      c.coat = r < 0.22 ? 0 : r < 0.4 ? 1 : r < 0.56 ? 2 : r < 0.66 ? 3 : r < 0.78 ? 4 : r < 0.9 ? 5 : 6;
+    },
+    sveglia: function (c, w) {
+      // dal cuscino: si stira, si siede un attimo e poi va
+      c.state = 1; c.timer = 1.2 + w.rnd() * 2; c.flee = 0;
+    },
+    update: function (c, dt, t, w) {
+      var s = w.sceneSp === c.kind ? w.sceneData(c.kind) : null, target = 0, testa = 0, m = null;
+      c.tailPh += dt * (c.sit > 0.5 ? 1.2 : 2 + c.sp * 0.25);
+      if (c.noia > 0) c.noia -= dt;
+      if (c.perched) {
+        c.curl = Math.min(1, c.curl + dt * 1.2); c.sp = 0; c.ph += dt * 1.4; c.sit = 0;
+        // un topo che passa vicino lo sveglia
+        if (s && s.topi && c.curl > 0.9 && topoDaPrendere(s, c, c.S * 1.1)) { w.release(c); c.cool = 12; c.noia = 0; }
+        codaMicio(c);
+        return;
+      }
+      c.curl = Math.max(0, c.curl - dt * 1.6);
+      if (c.preso && (c.preso.preso !== c || c.flee > 0 || (c.preso.tieni -= dt) <= 0)) lasciaTopo(c, c.preso, w);
+      if (c.preso) {
+        // il topo in bocca: seduto, la coda che batte
+        m = c.preso; c.sit = Math.min(1, c.sit + dt * 3);
+        m.x = c.x + Math.cos(c.th) * 0.55 * c.S; m.y = c.y + Math.sin(c.th) * 0.55 * c.S; m.th = c.th + 0.6 * Math.sin(t * 5);
+      } else if (c.curl > 0.3) {
+        // si sta alzando
+      } else if (c.flee > 0) {
+        // spavento (scatta il minuto): un balzo via
+        steer(c, c.fleeTh, 6, dt); target = 12 + 6 * c.z; c.state = 0; c.timer = 0.5;
+      } else if (s && s.topi && c.noia <= 0 && (m = topoDaPrendere(s, c, w.pokeR * 1.25))) {
+        if (c.goal) w.release(c);
+        c.cool = Math.max(c.cool, 4);
+        // punta dove il topo sta andando
+        var px = m.x + Math.cos(m.th) * m.sp * 0.25, py = m.y + Math.sin(m.th) * m.sp * 0.25;
+        steer(c, Math.atan2(py - c.y, px - c.x), 7, dt);
+        target = 10 + 6 * c.z;
+        var mx = c.x + Math.cos(c.th) * 0.5 * c.S, my = c.y + Math.sin(c.th) * 0.5 * c.S, reach = Math.max(1.3, c.S * 0.17);
+        if ((m.x - mx) * (m.x - mx) + (m.y - my) * (m.y - my) < reach * reach) {
+          // preso
+          m.preso = c; m.tieni = 1.2 + w.rnd() * 1.6; m.prese++; c.preso = m;
+          w.ripple(m.x, m.y, 1.5 + c.S * 0.2, 0.6, 0);
+        }
+        c.state = 0; c.timer = 1;
+      } else if (c.goal) {
+        // verso un cuscino
+        c.sit = Math.max(0, c.sit - dt * 3);
+        goTo(c, 3, 2.5 + 2.5 * c.z, 0.5, 2.5, dt);
+        c.gait += dt * c.sp / (0.55 * c.S) * TAU;
+        codaMicio(c);
+        return;
+      } else {
+        if ((c.timer -= dt) <= 0) {
+          var r = w.rnd();
+          // più seduti che in giro: sono gatti
+          if (c.state !== 1 && r < 0.6) { c.state = 1; c.timer = 5 + w.rnd() * 10; c.lato = w.rnd() < 0.5 ? -1 : 1; }
+          else if (r < 0.86) {
+            c.state = 0; c.timer = 2 + w.rnd() * 5;
+            // di solito verso un punto qualsiasi del salotto
+            if (w.rnd() < 0.7) c.hd = Math.atan2(w.rows * (0.1 + 0.8 * w.rnd()) - c.y, w.cols * (0.1 + 0.8 * w.rnd()) - c.x);
+            else c.hd = c.th + (w.rnd() - 0.5) * 2;
+          } else if (r < 0.92 && s && s.gomitoli && s.gomitoli.length) { c.state = 3; c.timer = 8; }
+          else { c.state = 2; c.timer = 0.8 + w.rnd() * 1.2; c.hd = w.rnd() * TAU; }
+        }
+        if (c.state === 0) {
+          c.hd += (w.rnd() - 0.5) * 0.8 * dt;
+          steer(c, c.hd, 1.3, dt); target = 1.6 + 2.2 * c.z;
+        } else if (c.state === 1) {
+          // seduto: si guarda intorno, ogni tanto si lecca una zampa
+          if (c.lecca > 0) { c.lecca -= dt; testa = c.lato * 1.1 + 0.18 * Math.sin(t * 11); }
+          else {
+            testa = 0.55 * Math.sin(t * 0.6 + c.seed * 9) * Math.sin(t * 0.23 + c.seed * 3);
+            if (w.rnd() < dt * 0.15) c.lecca = 1.5 + w.rnd() * 2;
+          }
+        } else if (c.state === 2) {
+          steer(c, c.hd, 5, dt); target = 13 + 6 * c.z; testa = 0;
+        } else {
+          // una zampata al gomitolo più vicino
+          var g = null, gd = 1e9;
+          for (var k = 0; s && s.gomitoli && k < s.gomitoli.length; k++) {
+            var gg = s.gomitoli[k], d2 = (gg.x - c.x) * (gg.x - c.x) + (gg.y - c.y) * (gg.y - c.y);
+            if (d2 < gd) { gd = d2; g = gg; }
+          }
+          if (!g) c.timer = 0;
+          else {
+            steer(c, Math.atan2(g.y - c.y, g.x - c.x), 4, dt); target = 4 + 4 * c.z;
+            if (Math.sqrt(gd) < g.r + c.S * 0.5) {
+              var a = c.th + (w.rnd() - 0.5) * 1.2, f = 7 + w.rnd() * 6;
+              g.vx += Math.cos(a) * f; g.vy += Math.sin(a) * f;
+              c.state = 1; c.timer = 1.5 + w.rnd() * 2.5; c.lato = w.rnd() < 0.5 ? -1 : 1;
+            }
+          }
+        }
+      }
+      var seduto = c.preso || c.curl > 0.3 || (c.state === 1 && !(c.flee > 0) && !m) ? 1 : 0;
+      if (seduto) target = 0;
+      c.sit += (seduto - c.sit) * Math.min(1, (seduto ? 2.5 : 5) * dt);
+      c.testa += (testa - c.testa) * Math.min(1, 6 * dt);
+      c.sp += (target - c.sp) * Math.min(1, (target > c.sp ? 4 : 6) * dt);
+      c.gait += dt * c.sp / (0.55 * c.S) * TAU;
+      advance(c, dt);
+      codaMicio(c);
+    },
+    shape: function (x, y, c, o) {
+      if (c.curl > 0.5) { micioDorme(x, y, c, o); return; }
+      var mt = c.mt, si = c.sit, ay = y < 0 ? -y : y;
+      // la testa, girata di c.testa intorno al collo
+      var nx = 0.22, ca = Math.cos(c.testa), sa = Math.sin(c.testa);
+      var hx = nx + (x - nx) * ca + y * sa, hy = -(x - nx) * sa + y * ca, ahy = hy < 0 ? -hy : hy;
+      if (hx > 0.18) {
+        if (mt < 0.07) {
+          var ex = hx - 0.425, ey = ahy - 0.055;
+          if (ex * ex + ey * ey < 0.0011) { o.v = 1; o.c = c.coat === 2 || c.coat === 5 ? 10 : 9; return; }
+          if (hx > 0.465 && hx < 0.5 && ahy < 0.02) { o.v = 0.9; o.c = 11; return; }
+        }
+        var qx = (hx - 0.37) / 0.13, qy = hy / 0.14, dq = qx * qx + qy * qy;
+        if (dq < 1) { o.v = 0.95 - 0.25 * dq; o.c = mantello(c, hx, hy, 1); return; }
+        // orecchie: triangoli in fuori e un po' in avanti
+        if (nelTriangolo(hx, ahy, 0.27, 0.08, 0.43, 0.1, 0.34, 0.23)) { o.v = 0.85; o.c = mantello(c, hx, hy, 4); return; }
+        // il collo
+        if (hx < 0.3 && ahy < 0.12 - 0.15 * (hx - 0.18)) { o.v = 0.9; o.c = mantello(c, hx, hy, 0); return; }
+      }
+      // corpo: seduto è più corto e più tondo dietro
+      var bcx = -0.02 - 0.08 * si, brx = 0.29 - 0.08 * si, bry = (0.16 + 0.035 * si) * (x < bcx ? 1.06 : 1);
+      var bx = (x - bcx) / brx, by = y / bry, db = bx * bx + by * by;
+      if (db < 1) { o.v = 0.92 - 0.3 * db; o.c = mantello(c, x, y, 0); return; }
+      // zampe: in piedi ai lati del corpo, che vanno avanti e indietro; seduto le due davanti
+      var pr = Math.max(0.045, mt * 0.55), k, px, py;
+      if (si < 0.5) {
+        for (k = 0; k < 4; k++) {
+          var fase = c.gait + (k === 0 || k === 3 ? 0 : Math.PI);
+          px = (k < 2 ? 0.17 : -0.19) + 0.06 * Math.sin(fase) * Math.min(1, c.sp);
+          py = (k % 2 ? 1 : -1) * 0.15;
+          if ((x - px) * (x - px) + (y - py) * (y - py) < pr * pr) { o.v = 0.8; o.c = mantello(c, x, y, 3); return; }
+        }
+      } else {
+        px = 0.19 - 0.08 * si; py = 0.06;
+        if ((x - px - 0.05) * (x - px - 0.05) + (ay - py) * (ay - py) < pr * pr) { o.v = 0.8; o.c = mantello(c, x, y, 3); return; }
+      }
+      // coda
+      if (c.coda) {
+        var dc = distCoda(c, x, y);
+        if (dc < Math.max(0.038, mt * 0.6)) { o.v = 0.75; o.c = mantello(c, -0.5, y, 2); }
+      }
+    }
+  });
+  // ==== fine gatti ====
+
+  // ==== animale: topi ====
+  // Topi: visti dall'alto, in una dispensa. Corrono a scatti e si fermano ad annusare,
+  // ogni tanto vanno a rosicchiare i chicchi caduti dai sacchi. Al clic arriva un pezzo di
+  // formaggio: i topi vicini corrono a mangiarlo tutti intorno, finché non ne resta niente.
+  // c.state: 0 fermo, 1 corre. c.coat: il pelo. Il formaggio sta nello stato della scena
+  // (s.formaggi), vedi SCENES.topi.
+  // il formaggio più vicino, se ne è rimasto
+  function formaggioVicino(s, c, r) {
+    var best = r * r, f = null;
+    for (var i = 0; i < s.formaggi.length; i++) {
+      var q = s.formaggi[i];
+      if (q.q <= 0.04) continue;
+      var d2 = (q.x - c.x) * (q.x - c.x) + (q.y - c.y) * (q.y - c.y);
+      if (d2 < best) { best = d2; f = q; }
+    }
+    return f;
+  }
+  // colore del pelo (parte: 0 corpo, 1 testa)
+  function pelo(c, x, y, parte) {
+    var ay = y < 0 ? -y : y;
+    switch (c.coat) {
+      case 0: return parte === 0 && ay < 0.05 && x < 0.1 ? 1 : 0; // grigio, la riga scura sulla schiena
+      case 1: return parte === 0 && ay < 0.06 ? 3 : 2;            // marrone
+      case 2: return 4;                                            // bianco
+      default: return parte === 0 && ay > 0.09 ? 2 : 5;            // fulvo
+    }
+  }
+
+  SPECIES.push({
+    id: 'topi', label: 'Topi', dot: '#cdb89a',
+    // 0 grigio, 1 grigio scuro, 2 marrone, 3 marrone scuro, 4 bianco, 5 fulvo, 6 rosa, 7 occhi
+    pal: ['#a9aebb', '#6f7482', '#a37a58', '#6e4f38', '#eeeae2', '#d2ae78', '#f2a0b8', '#e8505a'],
+    dens: 420, min: 8, max: 32, smin: 8, smax: 14, off: -0.28, rad: 0.76,
+    sosta: [3, 6], // quanto rosicchiano i chicchi
+    clicTesto: 'un pezzo di formaggio',
+    clic: function (w, x, y, s) {
+      w.ripple(x, y, 5, 0.7, 1);
+      if (!s || !s.formaggi) return;
+      if (s.formaggi.length >= 5) s.formaggi.shift();
+      s.formaggi.push({ x: x, y: y, r: 4.2 + w.rnd() * 1.4, rot: w.rnd() * TAU, q: 1, nato: w.t, seme: Math.floor(w.rnd() * 997) });
+    },
+    spawn: function (c, w) {
+      c.th = w.rnd() * TAU; c.state = 0; c.timer = w.rnd() * 1.5; c.nib = 0; c.naso = w.rnd() * TAU;
+      c.posto = w.rnd() * TAU; c.testa = 0;
+      var r = w.rnd();
+      c.coat = r < 0.45 ? 0 : r < 0.75 ? 1 : r < 0.85 ? 2 : 3;
+    },
+    update: function (c, dt, t, w) {
+      var s = w.sceneSp === c.kind ? w.sceneData(c.kind) : null, target = 0, testa = 0;
+      c.naso += dt * 15;
+      if (c.perched) { c.sp = 0; c.nib = 1; c.testa = 0.15 * Math.sin(t * 2 + c.seed * 9); return; } // rosicchia i chicchi
+      var f = s && s.formaggi && !(c.flee > 0) ? formaggioVicino(s, c, w.pokeR * 1.3) : null;
+      c.nib = Math.max(0, c.nib - dt * 3);
+      if (c.flee > 0) {
+        // spavento (scatta il minuto): di corsa via
+        steer(c, c.fleeTh, 10, dt); target = 13 + 6 * c.z; c.state = 1; c.timer = 0.3;
+      } else if (f) {
+        if (c.goal) w.release(c);
+        c.cool = Math.max(c.cool, 3);
+        // un posto intorno al formaggio, ognuno il suo
+        var R = f.r * (0.35 + 0.4 * Math.sqrt(f.q)) + c.S * 0.38;
+        var gx = f.x + Math.cos(c.posto) * R, gy = f.y + Math.sin(c.posto) * R, dx = gx - c.x, dy = gy - c.y, d = Math.sqrt(dx * dx + dy * dy);
+        if (d > 0.7) { steer(c, Math.atan2(dy, dx), 10, dt); target = Math.min(10 + 5 * c.z, 1 + d * 4); }
+        else {
+          // ci si è: muso verso il formaggio, e si rosicchia
+          steer(c, Math.atan2(f.y - c.y, f.x - c.x), 6, dt);
+          c.nib = 1; f.q -= dt * 0.007;
+          if (w.rnd() < dt * 0.6) s.briciole.push({ x: c.x + Math.cos(c.th) * c.S * 0.45 + (w.rnd() - 0.5) * 2, y: c.y + Math.sin(c.th) * c.S * 0.45 + (w.rnd() - 0.5) * 2, age: 0 });
+        }
+      } else if (c.goal) {
+        goTo(c, 9, 6 + 4 * c.z, 2, 6, dt);
+        return;
+      } else {
+        // a scatti: una corsa breve, poi fermo ad annusare
+        if ((c.timer -= dt) <= 0) {
+          if (c.state === 1) { c.state = 0; c.timer = 0.4 + w.rnd() * 1.8; }
+          else { c.state = 1; c.timer = 0.25 + w.rnd() * 0.8; c.th += (w.rnd() - 0.5) * (w.rnd() < 0.3 ? 3.5 : 1.4); }
+        }
+        if (c.state === 1) target = 8 + 7 * c.z;
+        else testa = 0.35 * Math.sin(t * 2.3 + c.seed * 11); // annusa intorno
+      }
+      c.testa += (testa - c.testa) * Math.min(1, 8 * dt);
+      c.sp += (target - c.sp) * Math.min(1, 12 * dt);
+      c.ph += dt * (2 + c.sp * 1.4);
+      advance(c, dt);
+    },
+    shape: function (x, y, c, o) {
+      var mt = c.mt, ay = y < 0 ? -y : y;
+      // la testa gira intorno al collo; rosicchiando va avanti e indietro
+      var nx = 0.12, ca = Math.cos(c.testa), sa = Math.sin(c.testa);
+      var hx = nx + (x - nx) * ca + y * sa - c.nib * 0.025 * (1 + Math.sin(c.naso * 1.6)), hy = -(x - nx) * sa + y * ca, ahy = hy < 0 ? -hy : hy;
+      if (hx > 0.08) {
+        // naso, che fiuta
+        var nz = 0.43 + 0.012 * Math.sin(c.naso);
+        if (hx > nz - 0.05 && hx < nz && ahy < Math.max(0.03, mt * 0.5)) { o.v = 0.9; o.c = 6; return; }
+        if (mt < 0.06 && Math.abs(hx - 0.29) < 0.025 && Math.abs(ahy - 0.06) < 0.022) { o.v = 1; o.c = c.coat === 2 ? 7 : 1; return; }
+        // orecchie tonde, rosa dentro
+        var ex = (hx - 0.17) / 0.08, ey = (ahy - 0.11) / 0.085, de = ex * ex + ey * ey;
+        if (de < 1) { o.v = 0.85; o.c = de < 0.4 ? 6 : pelo(c, hx, hy, 1); return; }
+        // la testa: a goccia, la punta al naso
+        if (hx < nz) {
+          var u = (nz - hx) / (nz - 0.1), half = 0.115 * Math.pow(Math.min(1, u), 0.65);
+          if (ahy < Math.max(half, mt * 0.45)) { o.v = 0.92 - 0.15 * (1 - u); o.c = pelo(c, hx, hy, 1); return; }
+        }
+      }
+      // corpo: a pera, più largo dietro
+      var bx = (x + 0.06) / 0.25, by = y / (x < 0 ? 0.155 : 0.13), db = bx * bx + by * by;
+      if (db < 1) { o.v = 0.9 - 0.3 * db; o.c = pelo(c, x, y, 0); return; }
+      // zampette ai lati, solo correndo
+      if (c.sp > 1 && ay > 0.1 && ay < 0.17) {
+        var px = Math.sin(c.ph * 2) * 0.05;
+        if (Math.abs(x - 0.07 - px) < 0.035 || Math.abs(x + 0.17 + px) < 0.035) { o.v = 0.6; o.c = 6; return; }
+      }
+      // coda: lunga e sottile, ondeggia
+      if (x < -0.27 && x > -1) {
+        var u2 = (-0.27 - x) / 0.73, yc = (0.1 * Math.sin(c.ph * 0.6 - u2 * 4) + 0.05 * Math.sin(c.seed * 20)) * u2;
+        if (Math.abs(y - yc) < Math.max(0.022 * (1 - 0.5 * u2), mt * 0.55)) { o.v = 0.55 - 0.25 * u2; o.c = 6; }
+      }
+    }
+  });
+  // ==== fine topi ====
+
   /* ------------------------------------------------------------------ */
   /* Scenografie: lo sfondo di ogni specie. Hanno uno stato proprio      */
   /* (rifatto se cambia la griglia), possono offrire posti dove posarsi  */
@@ -2010,6 +2395,336 @@ h1 {
   };
   // ==== fine anatre ====
 
+  // ==== animale: gatti ====
+  // Gatti: un salotto visto dall'alto. Parquet a listoni, un tappeto con la cornice, i
+  // cuscini dove i gatti dormono, gomitoli che rotolano quando li si tocca e lasciano il
+  // filo, le tane dei topi nei muri ai bordi. I topi arrivati con un clic corrono verso
+  // la tana più sicura, a zig-zag, lontano dai gatti.
+  // la tana dove conviene andare: vicina al topo, lontana dai gatti
+  function tanaSicura(s, m, w, sp) {
+    var best = null, bs = 1e9;
+    for (var k = 0; k < s.tane.length; k++) {
+      var h = s.tane[k], d = Math.sqrt((h.x - m.x) * (h.x - m.x) + (h.y - m.y) * (h.y - m.y)), gatto = 1e9;
+      for (var n = 0; n < w.creatures.length; n++) {
+        var c = w.creatures[n];
+        if (c.kind !== sp || c.dying || c.perched) continue;
+        gatto = Math.min(gatto, Math.sqrt((h.x - c.x) * (h.x - c.x) + (h.y - c.y) * (h.y - c.y)));
+      }
+      var v = d - 0.7 * Math.min(gatto, 40);
+      if (v < bs) { bs = v; best = h; }
+    }
+    return best;
+  }
+  // un topolino di poche celle: corpo, testa a punta, orecchie, coda
+  function disegnaTopo(w, m, C, A) {
+    var cs = Math.cos(m.th), sn = Math.sin(m.th), R = 6, x0 = Math.floor(m.x - R), y0 = Math.floor(m.y - R), k = 1 / 1.5;
+    for (var j = y0; j <= y0 + 2 * R; j++) {
+      for (var i = x0; i <= x0 + 2 * R; i++) {
+        var dx = i + 0.5 - m.x, dy = j + 0.5 - m.y, u = (dx * cs + dy * sn) * k, v = (dy * cs - dx * sn) * k, av = v < 0 ? -v : v;
+        var col = -1, val = 0.8;
+        if (u > 0.5 && u < 1.9 && av < 0.6 * (1.9 - u)) { col = u > 1.5 ? 14 : 12; val = 0.85; }   // testa e naso
+        else if ((u - 0.35) * (u - 0.35) + (av - 0.62) * (av - 0.62) < 0.2) { col = 14; val = 0.7; } // orecchie
+        else if ((u + 0.25) * (u + 0.25) / 1.44 + v * v / 0.56 < 1) { col = u < -0.6 ? 13 : 12; val = 0.85; } // corpo
+        else if (u < -1.2 && u > -3.8 && Math.abs(v - 0.5 * Math.sin(m.ph * 0.4 + u * 1.3) * (-1.2 - u) * 0.4) < 0.42) { col = 14; val = 0.4; } // coda
+        if (col >= 0) w.put(i, j, val, C + col, A, true);
+      }
+    }
+  }
+  SCENES.gatti = {
+    // 0 giunti del parquet, 1 venature, 2 tappeto rosso, 3 cornice oro, 4 tappeto blu,
+    // 5-7 cuscini, 8-9 gomitoli, 10 tana, 11 bordo della tana, 12-13 topo, 14 rosa
+    pal: ['#3a281a', '#6b4a2e', '#8f3b3b', '#d6a54e', '#3d5c8c', '#6b7cff', '#d0648f', '#4fae57',
+          '#e45bd0', '#5aa7ff', '#0e0b08', '#9a7a52', '#b9bcc6', '#7d818d', '#f4a6c8'],
+    init: function (w) {
+      var s = { pav: [], tappeto: [], cuscini: [], gomitoli: [], tane: [], topi: [], filo: [], celle: [] }, i, j, k, n;
+      // parquet: listoni orizzontali alti 4 righe, giunti sfalsati, qualche venatura
+      for (j = 0; j < w.rows; j++) {
+        var fila = Math.floor(j / 4), riga = j % 4, sfasa = Math.floor(hash2(fila, 7) * 26);
+        for (i = 0; i < w.cols; i++) {
+          var h = hash2(i * 5 + 11, j * 7 + 3);
+          if (riga === 3) { if (h < 0.6) s.pav.push(i, j, 0.1 + 0.08 * h, 0, 0.7); }
+          else if ((i + sfasa) % 26 === 0) s.pav.push(i, j, 0.12, 0, 0.7);
+          else if (Math.sin(i * 0.31 + fila * 2.1 + Math.sin(i * 0.05 + fila) * 3) > 0.985 && h < 0.7) s.pav.push(i, j, 0.09, 1, 0.6);
+        }
+      }
+      // il tappeto ovale, intrecciato: anelli di tre colori, tenui, in un posto a caso
+      var cx = w.cols * (0.3 + 0.4 * w.rnd()), cy = w.rows * (0.35 + 0.3 * w.rnd());
+      var hw = Math.min(w.cols * 0.24, 36), hh = Math.min(w.rows * 0.26, 17);
+      for (j = Math.floor(cy - hh); j <= Math.ceil(cy + hh); j++) {
+        for (i = Math.floor(cx - hw); i <= Math.ceil(cx + hw); i++) {
+          var ex = (i + 0.5 - cx) / hw, ey = (j + 0.5 - cy) / hh, e = Math.sqrt(ex * ex + ey * ey);
+          if (e >= 1) continue;
+          var anello = Math.floor(e * 9), h2 = hash2(i * 3 + 1, j * 13 + 7);
+          // la treccia: una cella sì e una no lungo ogni anello, l'anello di fuori pieno
+          if (anello < 8 && (h2 < 0.45 || (i + j + anello) % 2)) continue;
+          s.tappeto.push(i, j, anello === 8 ? 0.26 : 0.12 + 0.08 * h2, [2, 3, 4][anello % 3], anello === 8 ? 0.7 : 0.6);
+        }
+      }
+      // le tane dei topi: nel muro, ai bordi (una in basso, una a sinistra, una a destra)
+      s.tane.push({ x: w.cols * (0.15 + 0.7 * w.rnd()), y: w.rows - 0.5, th: -Math.PI / 2 });
+      s.tane.push({ x: 0.5, y: w.rows * (0.2 + 0.6 * w.rnd()), th: 0 });
+      s.tane.push({ x: w.cols - 0.5, y: w.rows * (0.2 + 0.6 * w.rnd()), th: Math.PI });
+      if (w.cols > 150) s.tane.push({ x: w.cols * (0.15 + 0.7 * w.rnd()), y: 0.5, th: Math.PI / 2 });
+      s.tane.forEach(function (h) {
+        for (var jj = Math.floor(h.y - 3); jj <= h.y + 3; jj++) {
+          for (var ii = Math.floor(h.x - 3); ii <= h.x + 3; ii++) {
+            var dx = ii + 0.5 - h.x, dy = jj + 0.5 - h.y, d = Math.sqrt(dx * dx + dy * dy);
+            if (dx * Math.cos(h.th) + dy * Math.sin(h.th) < -0.2) continue;
+            if (d < 1.9) s.celle.push(ii, jj, 0.08, 10, 1);
+            else if (d < 2.8) s.celle.push(ii, jj, 0.4, 11, 0.85);
+          }
+        }
+      });
+      // cuscini tondi (dove dormono i gatti)
+      n = clamp(Math.round(w.cols * w.rows / 2200), 3, 7);
+      for (k = 0; k < n; k++) {
+        var r = 2.7 + w.rnd() * 1.1, p = place(w, r + 1, s.cuscini, 4);
+        s.cuscini.push({ x: p.x, y: p.y, r: r, col: 5 + Math.floor(w.rnd() * 3), taken: null });
+      }
+      s.cuscini.forEach(function (q) {
+        for (var jj = Math.floor(q.y - q.r - 1); jj <= q.y + q.r + 1; jj++) {
+          for (var ii = Math.floor(q.x - q.r - 1); ii <= q.x + q.r + 1; ii++) {
+            var dx = ii + 0.5 - q.x, dy = jj + 0.5 - q.y, d = Math.sqrt(dx * dx + dy * dy) / q.r;
+            if (d >= 1) continue;
+            // il bordo imbottito, la cucitura, il bottone in mezzo
+            var v = d > 0.78 ? 0.36 : Math.abs(d - 0.5) < 0.1 ? 0.12 : d < 0.18 ? 0.4 : 0.2;
+            s.celle.push(ii, jj, v, q.col, 0.75);
+          }
+        }
+      });
+      // gomitoli
+      for (k = 0, n = w.cols * w.rows > 6000 ? 2 : 1; k < n; k++) {
+        var gp = place(w, 2, s.cuscini, 3);
+        s.gomitoli.push({ x: gp.x, y: gp.y, vx: 0, vy: 0, r: 1.4, rot: 0, col: 8 + k, strada: 0 });
+      }
+      return s;
+    },
+    tick: function (w, dt, t, s) {
+      var sp = this, cs = w.creatures, C = this.c0 + this.sc0, k, n, c;
+      // di ritorno dopo un altro sfondo: i topi di allora non ci sono più
+      if (s.ultimo !== undefined && t - s.ultimo > 1) s.topi = s.topi.filter(function (m) { return m.nato >= s.ultimo; });
+      s.ultimo = t;
+      // gomitoli: rotolano, rallentano, rimbalzano sui muri, lasciano il filo
+      for (k = 0; k < s.gomitoli.length; k++) {
+        var g = s.gomitoli[k];
+        for (n = 0; n < cs.length; n++) {
+          c = cs[n];
+          if (c.kind !== sp || c.dying || c.perched || c.sp < 0.5) continue;
+          var dx = g.x - c.x, dy = g.y - c.y, R = g.r + c.S * 0.3, d2 = dx * dx + dy * dy;
+          if (d2 < R * R && d2 > 1e-4) { var d = Math.sqrt(d2); g.vx += dx / d * c.sp * 2 * dt; g.vy += dy / d * c.sp * 2 * dt; }
+        }
+        var att = Math.pow(0.35, dt);
+        g.vx *= att; g.vy *= att;
+        g.x += g.vx * dt; g.y += g.vy * dt;
+        if (g.x < 1.5) { g.x = 1.5; g.vx = Math.abs(g.vx) * 0.6; } else if (g.x > w.cols - 1.5) { g.x = w.cols - 1.5; g.vx = -Math.abs(g.vx) * 0.6; }
+        if (g.y < 1.5) { g.y = 1.5; g.vy = Math.abs(g.vy) * 0.6; } else if (g.y > w.rows - 1.5) { g.y = w.rows - 1.5; g.vy = -Math.abs(g.vy) * 0.6; }
+        var v = Math.sqrt(g.vx * g.vx + g.vy * g.vy);
+        g.rot += v * dt / g.r;
+        if ((g.strada += v * dt) > 0.9) { g.strada = 0; s.filo.push({ x: g.x, y: g.y, col: g.col, age: 0 }); }
+      }
+      for (k = s.filo.length - 1; k >= 0; k--) if ((s.filo[k].age += dt) > 40) s.filo.splice(k, 1);
+      if (s.filo.length > 240) s.filo.splice(0, s.filo.length - 240);
+      // topi
+      for (k = s.topi.length - 1; k >= 0; k--) {
+        var m = s.topi[k];
+        m.ph += dt * (6 + m.sp * 2);
+        if (m.preso) {
+          // in bocca a un gatto: lo muove lui (se il gatto se ne va, il topo è libero)
+          if (m.preso.dying || m.preso.preso !== m) m.preso = null;
+          else continue;
+        }
+        if (m.dentro > 0) { if ((m.dentro += dt) > 0.6) s.topi.splice(k, 1); continue; }
+        m.a = Math.min(1, m.a + dt * 4);
+        if (m.libero > 0) m.libero -= dt;
+        if (!m.tana || (m.scegli -= dt) <= 0) { m.tana = tanaSicura(s, m, w, sp); m.scegli = 1.2; }
+        var hx = m.tana.x - m.x, hy = m.tana.y - m.y, hd = Math.sqrt(hx * hx + hy * hy) || 1, ax = hx / hd, ay = hy / hd, paura = 0;
+        for (n = 0; n < cs.length; n++) {
+          c = cs[n];
+          if (c.kind !== sp || c.dying || c.perched) continue;
+          var ex = m.x - c.x, ey = m.y - c.y, e = Math.sqrt(ex * ex + ey * ey) || 1, Rg = 5 + c.S;
+          if (e < Rg) { var f = (1 - e / Rg) * 2.4; ax += ex / e * f; ay += ey / e * f; paura = Math.max(paura, 1 - e / Rg); }
+        }
+        // a zig-zag, di più se un gatto è vicino
+        var zz = Math.sin(t * 6.5 + m.seed * 20) * (0.25 + 0.9 * paura);
+        steer(m, Math.atan2(ay, ax) + zz, 10, dt);
+        var vv = m.a < 1 ? 2 : 7 + 5 * paura + (m.prese >= 3 ? 2 : 0);
+        m.sp += (vv - m.sp) * Math.min(1, 6 * dt);
+        advance(m, dt);
+        m.x = clamp(m.x, 0.5, w.cols - 0.5); m.y = clamp(m.y, 0.5, w.rows - 0.5);
+        if (hd < 1.4) { m.dentro = 0.01; w.ripple(m.tana.x, m.tana.y, 2.4, 0.6, C + 11); }
+        else if (t - m.nato > 90) m.dentro = 0.01;
+      }
+    },
+    under: function (w, t, A, s) {
+      var C = this.c0 + this.sc0, k;
+      drawCells(w, s.pav, C, A);
+      drawCells(w, s.tappeto, C, A);
+      for (k = 0; k < s.filo.length; k++) {
+        var f = s.filo[k];
+        w.put(Math.floor(f.x), Math.floor(f.y), 0.2, C + f.col, A * 0.7 * (1 - f.age / 40));
+      }
+      drawCells(w, s.celle, C, A);
+      for (k = 0; k < s.gomitoli.length; k++) {
+        var g = s.gomitoli[k];
+        for (var j = Math.floor(g.y - 2); j <= g.y + 2; j++) {
+          for (var i = Math.floor(g.x - 2); i <= g.x + 2; i++) {
+            var dx = i + 0.5 - g.x, dy = j + 0.5 - g.y, d = Math.sqrt(dx * dx + dy * dy) / g.r;
+            if (d >= 1) continue;
+            // i giri del filo, che girano con il gomitolo
+            var giro = Math.sin((dx * Math.cos(g.rot) + dy * Math.sin(g.rot)) * 4);
+            w.put(i, j, giro > 0.3 ? 0.75 : 0.5, C + g.col, A);
+          }
+        }
+      }
+    },
+    over: function (w, t, A, s) {
+      var C = this.c0 + this.sc0;
+      for (var k = 0; k < s.topi.length; k++) {
+        var m = s.topi[k];
+        disegnaTopo(w, m, C, A * m.a * (m.dentro > 0 ? Math.max(0, 1 - m.dentro * 2) : 1));
+      }
+    },
+    spots: function (w, s) { return s.cuscini; }
+  };
+  // ==== fine gatti ====
+
+  // ==== animale: topi ====
+  // Topi: una dispensa vista dall'alto. Pavimento di lastre di pietra, sacchi di grano
+  // (uno aperto, con i chicchi sparsi) e casse da aggirare, mucchietti di chicchi dove i
+  // topi si fermano a rosicchiare, una ragnatela in un angolo. Il formaggio arrivato con
+  // un clic si consuma a morsi e lascia le briciole.
+  // un sacco: un cuscino di tela un po' bitorzoluto, con il collo legato da una parte
+  function celleSacco(w, o, cells) {
+    var R = o.r * 1.35;
+    for (var j = Math.floor(o.y - R); j <= o.y + R; j++) {
+      for (var i = Math.floor(o.x - R); i <= o.x + R; i++) {
+        var dx = i + 0.5 - o.x, dy = j + 0.5 - o.y, a = Math.atan2(dy, dx);
+        var ex = Math.abs(dx) / o.r, ey = Math.abs(dy) / (o.r * 0.85);
+        var d = Math.pow(Math.pow(ex, 2.6) + Math.pow(ey, 2.6), 1 / 2.6) / (1 + 0.06 * Math.sin(4 * a + o.p));
+        // il collo legato
+        var nx = dx - Math.cos(o.a) * o.r * 1.05, ny = dy - Math.sin(o.a) * o.r * 1.05;
+        if (nx * nx + ny * ny < 1.3) { cells.push(i, j, 0.55, 5, 0.9); continue; }
+        if (d >= 1) continue;
+        var trama = (i + j) % 2 === 0 && hash2(i * 5, j * 3) < 0.6;
+        cells.push(i, j, 0.3 + 0.2 * (1 - d * d) + (dx + dy < 0 ? 0.08 : 0), trama || d > 0.88 ? 4 : 3, 0.85);
+      }
+    }
+  }
+  // una cassa di legno: assi, il bordo più scuro
+  function celleCassa(w, o, cells) {
+    var h = o.r;
+    for (var j = Math.floor(o.y - h); j < o.y + h; j++) {
+      for (var i = Math.floor(o.x - h); i < o.x + h; i++) {
+        var dx = Math.abs(i + 0.5 - o.x), dy = Math.abs(j + 0.5 - o.y);
+        if (dx > h - 1 || dy > h - 1) cells.push(i, j, 0.5, 7, 0.9);
+        else if (Math.abs(dx - dy) < 0.6) cells.push(i, j, 0.42, 7, 0.85); // la croce sul coperchio
+        else cells.push(i, j, (j % 3 === 0 ? 0.22 : 0.34) + 0.06 * hash2(i, j), 6, 0.85);
+      }
+    }
+  }
+  SCENES.topi = {
+    // 0 pietra, 1 pietra chiara, 2 malta, 3-4 tela dei sacchi, 5 spago, 6-7 cassa, 8-9 chicchi,
+    // 10 formaggio, 11 crosta, 12 buchi del formaggio, 13 ragnatela, 14 briciole
+    pal: ['#3f434c', '#5c616d', '#25272d', '#b39062', '#80653f', '#ddd0a8', '#8a6238', '#5a3e24',
+          '#e6c45c', '#b8923a', '#ffd84a', '#f0a62c', '#c98e1e', '#8d93a0', '#ead79c'],
+    tondi: [12], // i buchi del formaggio: sempre "o"
+    init: function (w) {
+      var s = { pav: [], celle: [], sacchi: [], ostacoli: [], chicchi: [], formaggi: [], briciole: [] }, i, j, k, n;
+      // lastre di pietra: la malta dove due lastre si toccano (celle di Voronoi su una griglia mossa)
+      var LX = 11, LY = 7;
+      function punto(gi, gj) { return [(gi + 0.15 + 0.7 * hash2(gi * 7 + 1, gj * 3 + 5)) * LX, (gj + 0.15 + 0.7 * hash2(gi * 11 + 2, gj * 13 + 9)) * LY]; }
+      for (j = 0; j < w.rows; j++) {
+        for (i = 0; i < w.cols; i++) {
+          var gi = Math.floor((i + 0.5) / LX), gj = Math.floor((j + 0.5) / LY), d1 = 1e9, d2 = 1e9;
+          for (var b = -1; b <= 1; b++) {
+            for (var a = -1; a <= 1; a++) {
+              var p = punto(gi + a, gj + b), dx = (i + 0.5 - p[0]) / LX, dy = (j + 0.5 - p[1]) / LY, d = dx * dx + dy * dy;
+              if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+            }
+          }
+          var h = hash2(i * 3 + 7, j * 5 + 1), bordo = Math.sqrt(d2) - Math.sqrt(d1);
+          if (bordo < 0.05) { if (h < 0.75) s.pav.push(i, j, 0.12 + 0.06 * h, 2, 0.75); }
+          else if (h < 0.035) s.pav.push(i, j, 0.08 + h * 2, h < 0.012 ? 1 : 0, 0.6);
+        }
+      }
+      // sacchi e casse, da aggirare
+      n = clamp(Math.round(w.cols * w.rows / 2600), 3, 7);
+      for (k = 0; k < n; k++) {
+        var r = 3 + w.rnd() * 1.8, pp = place(w, r + 1, s.ostacoli, 4), cassa = k % 3 === 2;
+        var o = { x: pp.x, y: pp.y, r: cassa ? r * 1.1 : r, a: w.rnd() * TAU, p: w.rnd() * TAU, cassa: cassa };
+        s.ostacoli.push(o);
+        if (cassa) celleCassa(w, o, s.celle); else celleSacco(w, o, s.celle);
+      }
+      // mucchietti di chicchi (dove i topi si fermano a rosicchiare); il primo sacco è
+      // aperto e ne lascia una scia
+      n = clamp(Math.round(w.cols * w.rows / 1700), 4, 11);
+      for (k = 0; k < n; k++) {
+        var cp;
+        if (k < 3 && s.ostacoli.length && !s.ostacoli[0].cassa) {
+          var o0 = s.ostacoli[0], aa = o0.a + (k - 1) * 0.35, rr = o0.r * 1.45 + k * 1.8;
+          cp = { x: o0.x + Math.cos(o0.a) * rr + Math.cos(aa) * 0.5, y: o0.y + Math.sin(o0.a) * rr + Math.sin(aa) * 0.5 };
+        } else cp = place(w, 2, s.ostacoli.concat(s.chicchi), 3);
+        if (cp.x < 2 || cp.y < 2 || cp.x > w.cols - 2 || cp.y > w.rows - 2) continue;
+        s.chicchi.push({ x: cp.x, y: cp.y, r: 1.5, taken: null });
+        for (var g = 0; g < 9; g++) {
+          var ga = w.rnd() * TAU, gr = w.rnd() * 1.8;
+          s.celle.push(Math.floor(cp.x + Math.cos(ga) * gr), Math.floor(cp.y + Math.sin(ga) * gr * 0.8), 0.4 + 0.3 * w.rnd(), w.rnd() < 0.3 ? 9 : 8, 0.9);
+        }
+      }
+      // la ragnatela in un angolo in alto
+      var sx = w.rnd() < 0.5 ? 0 : w.cols, dir = sx ? -1 : 1, L = Math.min(14, w.rows * 0.3);
+      for (k = 0; k < 6; k++) {
+        var an = (k + 0.5) / 6 * Math.PI / 2;
+        for (var e = 1; e < L; e += 0.8) s.pav.push(Math.floor(sx + dir * Math.cos(an) * e), Math.floor(Math.sin(an) * e), 0.12, 13, 0.6);
+      }
+      for (var giro = 3; giro < L; giro += 2.6) {
+        for (var q = 0; q <= 14; q++) {
+          var an2 = q / 14 * Math.PI / 2, rg = giro * (0.92 + 0.08 * Math.cos(an2 * 12));
+          s.pav.push(Math.floor(sx + dir * Math.cos(an2) * rg), Math.floor(Math.sin(an2) * rg), 0.1, 13, 0.5);
+        }
+      }
+      return s;
+    },
+    tick: function (w, dt, t, s) {
+      // di ritorno dopo un altro sfondo: niente formaggio di allora
+      if (s.ultimo !== undefined && t - s.ultimo > 1) {
+        s.formaggi = s.formaggi.filter(function (f) { return f.nato >= s.ultimo; });
+        s.briciole.length = 0;
+      }
+      s.ultimo = t;
+      for (var k = s.formaggi.length - 1; k >= 0; k--) if (s.formaggi[k].q <= 0.04) s.formaggi.splice(k, 1);
+      for (k = s.briciole.length - 1; k >= 0; k--) if ((s.briciole[k].age += dt) > 12) s.briciole.splice(k, 1);
+      if (s.briciole.length > 150) s.briciole.splice(0, s.briciole.length - 150);
+    },
+    under: function (w, t, A, s) {
+      var C = this.c0 + this.sc0, k;
+      drawCells(w, s.pav, C, A);
+      drawCells(w, s.celle, C, A);
+      for (k = 0; k < s.briciole.length; k++) {
+        var b = s.briciole[k];
+        w.put(Math.floor(b.x), Math.floor(b.y), 0.35, C + 14, A * 0.8 * Math.min(1, (12 - b.age) / 3));
+      }
+      // formaggio: uno spicchio visto dall'alto, con i buchi; i morsi lo rimpiccioliscono e lo
+      // rosicchiano dal bordo
+      for (k = 0; k < s.formaggi.length; k++) {
+        var f = s.formaggi[k], R = f.r * (0.45 + 0.55 * Math.sqrt(f.q)), cx = Math.cos(f.rot), cy = Math.sin(f.rot);
+        var ax = f.x - cx * R * 0.55, ay = f.y - cy * R * 0.55, fa = A * Math.min(1, (w.t - f.nato) * 4);
+        for (var j = Math.floor(f.y - R - 1); j <= f.y + R + 1; j++) {
+          for (var i = Math.floor(f.x - R - 1); i <= f.x + R + 1; i++) {
+            var dx = i + 0.5 - ax, dy = j + 0.5 - ay, d = Math.sqrt(dx * dx + dy * dy);
+            if (d >= R || Math.abs(angDiff(Math.atan2(dy, dx), f.rot)) > 0.55) continue;
+            if (d > R * 0.45 && hash2(i * 7 + f.seme, j * 3 - f.seme) > 0.3 + 0.8 * f.q) continue; // i morsi
+            var col = d > R - 1 ? 11 : hash2(i + f.seme, j * 5) < 0.16 && d < R - 1.5 ? 12 : 10;
+            w.put(i, j, col === 12 ? 0.6 : 0.75 + 0.15 * (1 - d / R), C + col, fa);
+          }
+        }
+      }
+    },
+    spots: function (w, s) { return s.chicchi; },
+    obstacles: function (w, s) { return s.ostacoli; }
+  };
+  // ==== fine topi ====
+
   /* ------------------------------------------------------------------ */
   /* Paesaggi: sfondi senza animali, gli stessi dello screensaver         */
   /* (dreams/), nel menu "Sfondo > Paesaggi" dopo gli animali. Sono       */
@@ -2594,13 +3309,15 @@ h1 {
 
   // quanto in alto, rispetto alla taglia, va il nome dell'animale
   var NAME_UP = { farfalle: 0.62, meduse: 0.55, libellule: 0.75, koi: 0.45, rane: 0.45, aironi: 0.8, granchi: 0.5,
-                  cavalli: 0.6, anatre: 0.45 };
+                  cavalli: 0.6, anatre: 0.45, gatti: 0.55, topi: 0.6 };
 
   Object.keys(SCENES).forEach(function (id) {
     var sp = byId(id), sc = SCENES[id];
     sp.sc0 = sp.pal.length; // i colori della scena vengono dopo quelli dell'animale
     sp.pal = sp.pal.concat(sc.pal);
     ['init', 'tick', 'under', 'over', 'spots', 'kick', 'obstacles'].forEach(function (k) { if (sc[k]) sp[k] = sc[k]; });
+    // colori della scena sempre con la "o" (i buchi del formaggio): dopo quelli dell'animale
+    if (Array.isArray(sc.tondi)) sp.tondi = (sp.tondi || []).concat(sc.tondi.map(function (k) { return sp.sc0 + k; }));
   });
   SPECIES.forEach(function (sp) { sp.nameUp = NAME_UP[sp.base] || 0.5; });
 
@@ -2615,6 +3332,10 @@ h1 {
   var GLYPH = new Uint8Array(PALETTE.length);
   GLYPH[1] = 1;
   GLYPH[byId('meduse').c0 + byId('meduse').sc0] = 2;
+  SPECIES.forEach(function (sp) {
+    if (!Array.isArray(sp.tondi)) return;
+    sp.tondi.forEach(function (k) { if (k >= 0 && k < sp.pal.length) GLYPH[sp.c0 + k] = 1; });
+  });
 
   /* ------------------------------------------------------------------ */
 
@@ -2927,6 +3648,9 @@ h1 {
   Zoo.prototype.poke = function (px, py) {
     var x = px / this.cell, y = py / this.cell, sp = this.species, self = this;
     if (!sp) return;
+    // la specie decide da sola (i gatti: arriva un topo; i topi: il formaggio); s è lo stato
+    // della sua scenografia, se ne ha una
+    if (sp.clic) { sp.clic(this, x, y, sp.init ? this.sceneData(sp) : null); return; }
     if (sp.feeds) {
       var n = 5 + Math.floor(this.rnd() * 3);
       for (var i = 0; i < n; i++) {
@@ -3387,6 +4111,7 @@ h1 {
     var C = this.clock, spot = c.spot;
     this.release(c);
     c.cool = 8 + this.rnd() * 14;
+    if (c.kind.sveglia) { if (spot && c.kind.kick) c.kind.kick(spot, this); c.kind.sveglia(c, this); return; } // es. il gatto si stira
     if (spot) {
       // da un fiore, una canna, un nido, un sasso: via in una direzione qualsiasi
       if (c.kind.kick) c.kind.kick(spot, this);
@@ -3421,7 +4146,8 @@ h1 {
       if (dx * dx + dy * dy < 0.4 && !(c.air > 0)) {
         c.perched = true; c.x = c.goal.x; c.y = c.goal.y; c.sp = 0;
         if (c.spot && c.spot.th !== undefined) c.th = c.spot.th;
-        c.ptime = c.spot ? (sp.base === 'aironi' ? 8 + this.rnd() * 14 : 5 + this.rnd() * 12) : 4 + this.rnd() * 9;
+        c.ptime = c.spot ? (sp.sosta ? sp.sosta[0] + this.rnd() * sp.sosta[1] : sp.base === 'aironi' ? 8 + this.rnd() * 14 : 5 + this.rnd() * 12)
+          : 4 + this.rnd() * 9;
       } else if ((c.gtime += dt) > (sp.base === 'aironi' ? 25 : 15)) { this.release(c); c.cool = 8; }
       return;
     }
@@ -3653,7 +4379,8 @@ h1 {
     var act = touch ? 'Tocca' : 'Clic';
     var tasti = touch ? '' : 'tasti 1–' + Math.min(9, SPECIES.length) + ': cambia sfondo';
     hint.textContent = sp.paesaggio ? tasti :
-      (sp.feeds ? act + ': dai da mangiare alle ' + sp.label.toLowerCase() : act + ': si disperdono') + (tasti ? ' · ' + tasti : '');
+      (sp.clicTesto ? act + ': ' + sp.clicTesto : sp.feeds ? act + ': dai da mangiare alle ' + sp.label.toLowerCase() : act + ': si disperdono') +
+      (tasti ? ' · ' + tasti : '');
     if (!keepHash && fromHash() !== id) {
       try { location.replace('#' + id); } catch (e) { /* non indispensabile */ }
     }

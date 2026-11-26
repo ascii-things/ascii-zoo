@@ -10,8 +10,14 @@ pub const NOME_MAX: usize = 16;
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct Config {
-    /// 0 = a rotazione, 1..=9 = un animale fisso (stesso ordine del menu)
+    /// 0 = a rotazione, 1.. = uno sfondo fisso: la sua posizione in shared::specie() (gli
+    /// animali di serie, poi i paesaggi, poi le scene dell'utente)
     pub animale: u32,
+    /// quanti animali di serie c'erano quando si sono salvate le posizioni di `animale` e
+    /// `animale_schermi`: con un animale nuovo i paesaggi e le scene dopo di lui si spostano
+    /// (vedi `migra`). Manca nei file fino alla 0.8: erano 9
+    #[serde(default = "animali_fino_alla_08")]
+    pub animali_di_serie: u32,
     /// con "a rotazione": koi nello stagno quando il PC è in carica
     pub koi_in_carica: bool,
     /// ferma l'animazione quando il PC va a batteria
@@ -81,6 +87,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             animale: 0,
+            animali_di_serie: crate::shared::SPECIE.len() as u32,
             koi_in_carica: true,
             pausa_batteria: true,
             pausa_schermo_intero: true,
@@ -205,13 +212,40 @@ pub mod linux_dir {
     }
 }
 
+fn animali_fino_alla_08() -> u32 {
+    9
+}
+
 impl Config {
     pub fn load() -> Self {
-        std::fs::read_to_string(path())
-            .ok()
-            // un file salvato con il BOM (es. da Blocco note) non deve azzerare tutto
-            .and_then(|s| serde_json::from_str(s.trim_start_matches('\u{feff}')).ok())
-            .unwrap_or_default()
+        Self::da_json(&std::fs::read_to_string(path()).unwrap_or_default())
+    }
+
+    /// le impostazioni scritte in config.json; quelle di serie se il file non si legge
+    fn da_json(testo: &str) -> Self {
+        // un file salvato con il BOM (es. da Blocco note) non deve azzerare tutto
+        let mut cfg: Self = serde_json::from_str(testo.trim_start_matches('\u{feff}')).unwrap_or_default();
+        cfg.migra();
+        cfg
+    }
+
+    /// Posizioni salvate con meno animali di serie (una versione vecchia): uno sfondo dopo
+    /// gli animali (paesaggio o scena dell'utente) va avanti di quanti animali sono arrivati,
+    /// così resta lo stesso sfondo. Gli animali restano dov'erano: i nuovi vengono dopo.
+    fn migra(&mut self) {
+        let ora = crate::shared::SPECIE.len() as u32;
+        let prima = self.animali_di_serie;
+        if prima >= ora {
+            return;
+        }
+        let sposta = |p: &mut u32| {
+            if *p > prima {
+                *p += ora - prima;
+            }
+        };
+        sposta(&mut self.animale);
+        self.animale_schermi.values_mut().for_each(sposta);
+        self.animali_di_serie = ora;
     }
 
     pub fn save(&self) {
@@ -405,4 +439,37 @@ pub mod autostart {
 /// la cartella delle impostazioni (quella di config.json)
 pub fn cartella() -> PathBuf {
     path().parent().map(std::path::Path::to_path_buf).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod prove {
+    use super::*;
+
+    /// prima della 0.9 c'erano 9 animali: un paesaggio o una scena va avanti, un animale no
+    #[test]
+    fn posizioni_di_una_versione_vecchia() {
+        let nuovi = crate::shared::SPECIE.len() as u32 - 9;
+        let cfg = Config::da_json(r#"{"animale": 10, "animale_schermi": {"A": 4, "B": 9, "C": 16, "D": 0}}"#);
+        assert_eq!(cfg.animale, 10 + nuovi, "Stelle resta Stelle");
+        assert_eq!(cfg.animale_schermi["A"], 4, "Koi resta Koi");
+        assert_eq!(cfg.animale_schermi["B"], 9, "Anatre resta Anatre");
+        assert_eq!(cfg.animale_schermi["C"], 16 + nuovi, "la prima scena dell'utente resta lei");
+        assert_eq!(cfg.animale_schermi["D"], 0, "a rotazione resta a rotazione");
+        assert_eq!(cfg.animali_di_serie, crate::shared::SPECIE.len() as u32);
+    }
+
+    /// un file nuovo o già sistemato non cambia, neanche riletto più volte
+    #[test]
+    fn posizioni_gia_giuste() {
+        assert_eq!(Config::da_json("{}").animale, 0);
+        assert_eq!(Config::da_json("non è json").animale, 0);
+        let cfg = Config::da_json(r#"{"animale": 3}"#);
+        let salvato = serde_json::to_string(&cfg).unwrap();
+        let riletto = Config::da_json(&salvato);
+        assert_eq!(riletto.animale, 3);
+        let cfg = Config::da_json(r#"{"animale": 10}"#);
+        let riletto = Config::da_json(&serde_json::to_string(&cfg).unwrap());
+        assert_eq!(riletto.animale, cfg.animale, "si sposta una volta sola");
+        assert_eq!(Config::default().animali_di_serie, crate::shared::SPECIE.len() as u32);
+    }
 }
