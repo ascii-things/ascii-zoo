@@ -38,13 +38,14 @@ pub const SPECIE: [(&str, &str); 11] = [
 
 /// i paesaggi di serie, dopo gli animali nella pagina: sfondi senza animali, gli stessi
 /// dello screensaver (dreams/), con gli stessi id. (id, nome nel menu)
-pub const PAESAGGI: [(&str, &str); 6] = [
+pub const PAESAGGI: [(&str, &str); 7] = [
     ("stelle", "Stelle"),
     ("pioggia", "Pioggia e lampi"),
     ("fuoco", "Falò"),
     ("aurora", "Aurora"),
     ("vita", "Gioco della vita"),
     ("mare", "Mare di notte"),
+    ("neve", "Neve"),
 ];
 
 /// una voce del menu "Sfondo": un animale o un paesaggio
@@ -400,6 +401,8 @@ pub struct Menus {
     widget_schermi_fissi: Vec<(String, CheckMenuItem)>,
     pub clic: CheckMenuItem,
     pub orologio: CheckMenuItem,
+    /// "Neve durante le feste"
+    pub neve: CheckMenuItem,
     pub koi: CheckMenuItem,
     pub batteria: CheckMenuItem,
     pub schermo: CheckMenuItem,
@@ -560,6 +563,18 @@ impl Core {
 
     pub fn js_orologio(&self) -> String {
         format!("window.zooSetting && zooSetting('orologio', {})", self.cfg.orologio)
+    }
+
+    /// la neve delle feste; ASCII_ZOO_NEVE=sempre la fa cadere anche fuori stagione (per le prove)
+    pub fn js_neve(&self) -> String {
+        let v = if !self.cfg.neve_feste {
+            "false"
+        } else if std::env::var("ASCII_ZOO_NEVE").as_deref() == Ok("sempre") {
+            "'sempre'"
+        } else {
+            "true"
+        };
+        format!("window.zooSetting && zooSetting('neve', {v})")
     }
 
     pub fn js_rotazione(&self, schermo: &str) -> String {
@@ -866,6 +881,7 @@ impl Core {
             self.js_nomi(),
             self.js_rotazione(schermo),
             self.js_orologio(),
+            self.js_neve(),
             format!(
                 "if (window.zooSetting) {{ zooSetting('inCarica', {in_carica}); zooSetting('koiInCarica', {}); }}",
                 self.cfg.koi_in_carica
@@ -1171,6 +1187,9 @@ impl Core {
         } else if id == m.orologio.id().0 {
             self.cfg.orologio = m.orologio.is_checked();
             Some(self.js_orologio())
+        } else if id == m.neve.id().0 {
+            self.cfg.neve_feste = m.neve.is_checked();
+            Some(self.js_neve())
         } else if id == m.koi.id().0 {
             self.cfg.koi_in_carica = m.koi.is_checked();
             Some(format!("window.zooSetting && zooSetting('koiInCarica', {})", self.cfg.koi_in_carica))
@@ -1499,6 +1518,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         widget_schermi_fissi: Vec::new(),
         clic: CheckMenuItem::new("Clic sul desktop agli animali", true, cfg.clic_desktop, None),
         orologio: CheckMenuItem::new("Orologio al centro", true, cfg.orologio, None),
+        neve: CheckMenuItem::new("Neve durante le feste (1/12 – 6/1)", true, cfg.neve_feste, None),
         koi: CheckMenuItem::new("Koi nello stagno in carica (con \"A rotazione\")", true, cfg.koi_in_carica, None),
         batteria: CheckMenuItem::new("Pausa a batteria", true, cfg.pausa_batteria, None),
         schermo: CheckMenuItem::new("Pausa con app a schermo intero", true, cfg.pausa_schermo_intero, None),
@@ -1539,6 +1559,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let _ = menu.append(&tema_sub);
     let _ = menu.append(&fotogrammi_sub);
     let _ = menu.append(&m.orologio);
+    let _ = menu.append(&m.neve);
     let _ = menu.append(&m.koi);
     let _ = menu.append(&m.clic);
     let _ = menu.append(&PredefinedMenuItem::separator());

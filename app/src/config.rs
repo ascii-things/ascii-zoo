@@ -18,6 +18,10 @@ pub struct Config {
     /// (vedi `migra`). Manca nei file fino alla 0.8: erano 9
     #[serde(default = "animali_fino_alla_08")]
     pub animali_di_serie: u32,
+    /// lo stesso per i paesaggi (vengono dopo gli animali e prima delle scene dell'utente):
+    /// manca nei file fino alla 0.9, che ne aveva 6
+    #[serde(default = "paesaggi_fino_alla_09")]
+    pub paesaggi_di_serie: u32,
     /// con "a rotazione": koi nello stagno quando il PC è in carica
     pub koi_in_carica: bool,
     /// ferma l'animazione quando il PC va a batteria
@@ -71,6 +75,8 @@ pub struct Config {
     /// l'orologio con la data al centro dello schermo (spento: gli animali e la scenografia
     /// usano anche il centro)
     pub orologio: bool,
+    /// dal 1° dicembre al 6 gennaio un po' di neve cade su tutti gli sfondi (la pagina guarda la data)
+    pub neve_feste: bool,
     /// tema dello sfondo: "scuro", "chiaro" o "sistema" (segue il tema chiaro o scuro del sistema)
     pub tema: String,
     /// fotogrammi al secondo dello sfondo: 30, 20 o 15 (vedi shared::FOTOGRAMMI)
@@ -95,6 +101,7 @@ impl Default for Config {
         Self {
             animale: 0,
             animali_di_serie: crate::shared::SPECIE.len() as u32,
+            paesaggi_di_serie: crate::shared::PAESAGGI.len() as u32,
             koi_in_carica: true,
             pausa_batteria: true,
             pausa_schermo_intero: true,
@@ -121,6 +128,7 @@ impl Default for Config {
             animale_schermi: BTreeMap::new(),
             clic_desktop: true,
             orologio: true,
+            neve_feste: true,
             tema: "scuro".into(),
             fotogrammi: 30,
             salvaschermo_minuti: 0,
@@ -226,6 +234,10 @@ fn animali_fino_alla_08() -> u32 {
     9
 }
 
+fn paesaggi_fino_alla_09() -> u32 {
+    6
+}
+
 impl Config {
     pub fn load() -> Self {
         Self::da_json(&std::fs::read_to_string(path()).unwrap_or_default())
@@ -239,23 +251,28 @@ impl Config {
         cfg
     }
 
-    /// Posizioni salvate con meno animali di serie (una versione vecchia): uno sfondo dopo
-    /// gli animali (paesaggio o scena dell'utente) va avanti di quanti animali sono arrivati,
-    /// così resta lo stesso sfondo. Gli animali restano dov'erano: i nuovi vengono dopo.
+    /// Posizioni salvate con meno animali o paesaggi di serie (una versione vecchia): un
+    /// paesaggio va avanti di quanti animali sono arrivati, una scena dell'utente di quanti
+    /// animali e paesaggi sono arrivati, così resta lo stesso sfondo. Gli animali restano
+    /// dov'erano: i nuovi vengono dopo, come i paesaggi nuovi dopo gli altri paesaggi.
     fn migra(&mut self) {
-        let ora = crate::shared::SPECIE.len() as u32;
-        let prima = self.animali_di_serie;
-        if prima >= ora {
+        let (a1, p1) = (crate::shared::SPECIE.len() as u32, crate::shared::PAESAGGI.len() as u32);
+        let (a0, p0) = (self.animali_di_serie, self.paesaggi_di_serie);
+        // uguale, o scritto da una versione più nuova: non si tocca
+        if a0 > a1 || p0 > p1 || (a0 == a1 && p0 == p1) {
             return;
         }
         let sposta = |p: &mut u32| {
-            if *p > prima {
-                *p += ora - prima;
+            if *p > a0 + p0 {
+                *p += (a1 - a0) + (p1 - p0);
+            } else if *p > a0 {
+                *p += a1 - a0;
             }
         };
         sposta(&mut self.animale);
         self.animale_schermi.values_mut().for_each(sposta);
-        self.animali_di_serie = ora;
+        self.animali_di_serie = a1;
+        self.paesaggi_di_serie = p1;
     }
 
     pub fn save(&self) {
@@ -463,7 +480,8 @@ mod prove {
         assert_eq!(cfg.animale, 10 + nuovi, "Stelle resta Stelle");
         assert_eq!(cfg.animale_schermi["A"], 4, "Koi resta Koi");
         assert_eq!(cfg.animale_schermi["B"], 9, "Anatre resta Anatre");
-        assert_eq!(cfg.animale_schermi["C"], 16 + nuovi, "la prima scena dell'utente resta lei");
+        let paesaggi = crate::shared::PAESAGGI.len() as u32 - 6;
+        assert_eq!(cfg.animale_schermi["C"], 16 + nuovi + paesaggi, "la prima scena dell'utente resta lei");
         assert_eq!(cfg.animale_schermi["D"], 0, "a rotazione resta a rotazione");
         assert_eq!(cfg.animali_di_serie, crate::shared::SPECIE.len() as u32);
     }
@@ -481,5 +499,20 @@ mod prove {
         let riletto = Config::da_json(&serde_json::to_string(&cfg).unwrap());
         assert_eq!(riletto.animale, cfg.animale, "si sposta una volta sola");
         assert_eq!(Config::default().animali_di_serie, crate::shared::SPECIE.len() as u32);
+        assert_eq!(Config::default().paesaggi_di_serie, crate::shared::PAESAGGI.len() as u32);
+    }
+
+    /// dalla 0.9 (11 animali, 6 paesaggi): i paesaggi restano, le scene dell'utente vanno avanti
+    #[test]
+    fn posizioni_della_09() {
+        let (a, p) = (crate::shared::SPECIE.len() as u32, crate::shared::PAESAGGI.len() as u32);
+        let cfg = Config::da_json(r#"{"animale": 17, "animali_di_serie": 11, "animale_schermi": {"A": 12, "B": 18, "C": 11}}"#);
+        assert_eq!(cfg.animale, 17 + (a - 11), "Mare di notte resta Mare di notte");
+        assert_eq!(cfg.animale_schermi["A"], 12 + (a - 11), "Stelle resta Stelle");
+        assert_eq!(cfg.animale_schermi["B"], 18 + (a - 11) + (p - 6), "la prima scena dell'utente resta lei");
+        assert_eq!(cfg.animale_schermi["C"], 11, "Topi resta Topi");
+        // scritto da una versione più nuova (più animali di questa): non si tocca
+        let cfg = Config::da_json(r#"{"animale": 30, "animali_di_serie": 99, "paesaggi_di_serie": 6}"#);
+        assert_eq!(cfg.animale, 30);
     }
 }

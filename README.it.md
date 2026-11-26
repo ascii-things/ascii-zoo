@@ -41,7 +41,7 @@ Ogni animale è una forma calcolata cella per cella: ogni cella accesa diventa u
 
 ## I paesaggi
 
-Oltre agli animali, sei paesaggi senza animali: le sei scene dello screensaver, adesso anche come sfondo. Nel menu del programma **Sfondo** ha due sottomenu, **Animali** e **Paesaggi**, e in **In rotazione** si sceglie quali animali e quali paesaggi far girare.
+Oltre agli animali, sette paesaggi senza animali: le sette scene dello screensaver, anche come sfondo. Nel menu del programma **Sfondo** ha due sottomenu, **Animali** e **Paesaggi**, e in **In rotazione** si sceglie quali animali e quali paesaggi far girare.
 
 <p align="center">
   <img src="docs/landscapes.png" alt="I sei paesaggi con l'orologio: stelle, pioggia e lampi, falò, aurora sulle montagne, gioco della vita, mare di notte con la luna" width="100%">
@@ -55,8 +55,11 @@ Oltre agli animali, sei paesaggi senza animali: le sei scene dello screensaver, 
 | **Aurora** | tende di luce verde e viola sopra le montagne, le stelle che brillano, il lago che riflette tutto |
 | **Gioco della vita** | le cellule di Conway cambiano colore invecchiando e lasciano una scia; se il mondo si ferma ne arrivano di nuove |
 | **Mare di notte** | la luna con i crateri, le nuvole, il riflesso che tremola sulle onde e una barchetta a vela che attraversa |
+| **Neve** | una notte d'inverno: nevica a tre profondità con il vento che va e viene, sugli abeti e su una baita con la finestra accesa e il fumo dal camino; un clic è una folata, e vicino a terra la neve si alza in uno sbuffo |
 
 Sono scritti come le [scene tue](#scene-tue): anche loro si trovano come file in `di-serie` e si possono copiare e cambiare.
+
+**Neve durante le feste.** Dal 1° dicembre al 6 gennaio un po' di neve cade su tutti gli sfondi, davanti a tutto ma dietro le parti più luminose degli animali (non sott'acqua con le meduse, non sotto la pioggia e non nel paesaggio Neve, che ha la sua). Si spegne togliendo la spunta a **Neve durante le feste** nel menu.
 
 ## I widget
 
@@ -162,7 +165,7 @@ ascii-zoo/
 ├── wallpaper/               sfondo animato (anche pronto per Lively Wallpaper)
 │   ├── index.html           tutto in un file: motore, orologio, carattere incorporato
 │   ├── LivelyInfo.json      descrizione del pacchetto per Lively
-│   ├── LivelyProperties.json  impostazioni in Lively (orologio al centro, tema)
+│   ├── LivelyProperties.json  impostazioni in Lively (orologio al centro, neve durante le feste, tema)
 │   └── thumbnail.jpg        miniatura nella libreria di Lively
 ├── app/                     programma in Rust per Windows, macOS e Linux
 │   ├── src/                 finestre dietro le icone, menu, nomi, rotazione, pause

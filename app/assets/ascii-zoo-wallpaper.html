@@ -315,7 +315,8 @@ h1 {
 
   // Colori comuni a tutte le modalità: 0 = onda del clic, 1 = cibo,
   // 2 = cifre dell'orologio, 3 = segmenti spenti
-  var PALETTE = ['#aab3c5', '#f0d9a0', '#e6e9f2', '#4a5064'];
+  // comuni a tutti: 0 onda, 1 cibo, 2 cifre, 3 segmenti spenti, 4 neve delle feste (vedi neveFeste)
+  var PALETTE = ['#aab3c5', '#f0d9a0', '#e6e9f2', '#4a5064', '#eef3ff'];
 
   // Orologio a sette segmenti (a..g): quali segmenti accende ogni cifra
   var DIGITS = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
@@ -2751,6 +2752,10 @@ h1 {
       init: def.init, tick: def.tick, under: def.disegna || niente
     };
     if (typeof def.sopra === 'function') sp.over = def.sopra;
+    // colori con un carattere fisso: tondi = sempre 'o', fiocchi = '*' (o '.' se tenui)
+    if (Array.isArray(def.tondi)) sp.tondi = def.tondi.slice(0, 16);
+    if (Array.isArray(def.fiocchi)) sp.fiocchi = def.fiocchi.slice(0, 16);
+    if (typeof def.clicTesto === 'string') sp.clicTesto = def.clicTesto.slice(0, 60);
     // altre funzioni della scena (es. una che crea una goccia): si chiamano con this.nome()
     for (var k in def) {
       if (typeof def[k] === 'function' && !(k in sp) && k !== 'disegna' && k !== 'sopra') sp[k] = def[k];
@@ -3219,6 +3224,220 @@ h1 {
   });
   // ==== fine mare ====
 
+  // ==== paesaggio: neve ====
+  // Neve: una notte d'inverno. Nevica a tre profondità con il vento che va e viene, sugli
+  // abeti con la neve sui rami e su una baita con la finestra accesa e il fumo dal camino;
+  // la luna e qualche stella. Un clic è una folata: i fiocchi intorno volano via e la neve
+  // per terra si alza in uno sbuffo.
+  scena({
+    id: 'neve', nome: 'Neve',
+    // 0 fiocchi vicini, 1 fiocchi lontani, 2 neve, 3 neve in ombra, 4-5 abeti, 6 legno,
+    // 7 finestra accesa, 8 fumo, 9 luna, 10 stelle, 11 colline, 12 tetto, 13 tronchi
+    colori: ['#f4f8ff', '#a3b5d8', '#dfe7f5', '#7f92b8', '#1f5847', '#2e7a5b', '#7a5638', '#ffcf73',
+             '#8f99ab', '#f6efc8', '#c4d0f5', '#46567c', '#9c4a34', '#5a3f2b'],
+    puntino: '#dfe7f5',
+    fiocchi: [0, 1], // i fiocchi: '*' e '.'
+    clicTesto: 'una folata di vento',
+    init: function (w) {
+      var W = w.cols, H = w.rows, s = { fissi: [], fiocchi: [], fumo: [], sbuffi: [], folate: [], vento: 0 };
+      var i, j, k, terra = s.terra = new Float32Array(W + 1);
+      for (i = 0; i <= W; i++) terra[i] = H * 0.8 + 1.5 * Math.sin(i * 0.07 + 1) + 1.1 * Math.sin(i * 0.19 + 2);
+      var celle = s.fissi;
+      // le stelle (brillano: vedi disegna) e la luna, con qualche macchia
+      s.stelle = [];
+      for (k = 0; k < W * H / 90; k++) s.stelle.push(Math.floor(w.rnd() * W), Math.floor(w.rnd() * H * 0.55), w.rnd() * TAU);
+      var lx = W * (0.14 + 0.1 * w.rnd()), ly = H * 0.17, lr = Math.max(2.5, H * 0.075);
+      s.luna = { x: lx, y: ly, r: lr };
+      for (j = Math.floor(ly - lr); j <= ly + lr; j++) {
+        for (i = Math.floor(lx - lr); i <= lx + lr; i++) {
+          var dx = i + 0.5 - lx, dy = j + 0.5 - ly, d = Math.sqrt(dx * dx + dy * dy) / lr;
+          if (d < 1) celle.push(i, j, frattale(i * 0.4, j * 0.4, 2) > 0.55 ? 0.62 : 0.8 - 0.15 * d, 9, 1);
+        }
+      }
+      // le colline lontane, innevate
+      s.collina = new Float32Array(W + 1);
+      for (i = 0; i <= W; i++) s.collina[i] = H * 0.67 - H * 0.07 * (Math.sin(i * 0.035 + 2.2) + 1) - H * 0.08 * frattale(i * 0.03 + 4.1, 2.3, 3);
+      for (i = 0; i < W; i++) {
+        var c0 = Math.floor(s.collina[i]);
+        for (j = c0; j < terra[i]; j++) {
+          if (j === c0) celle.push(i, j, 0.34, 2, 0.7);
+          else if (hash2(i * 3 + 1, j * 7) < 0.35) celle.push(i, j, 0.12, 11, 0.7);
+        }
+      }
+      // gli abeti: lontani (piccoli, sulle colline) e vicini (sul prato); la baita in mezzo
+      var bx = Math.floor(W * (0.52 + 0.16 * w.rnd())), bw = Math.max(16, Math.round(H * 0.27)), alberi = [];
+      s.baita = { x: bx, w: bw };
+      var n = Math.max(6, Math.round(W / 9));
+      for (k = 0; k < n; k++) {
+        var lontano = k < n * 0.55, ax = Math.floor(w.rnd() * W);
+        if (!lontano && Math.abs(ax - bx - bw / 2) < bw * 0.9) continue;
+        var base = lontano ? s.collina[ax] + 2 + w.rnd() * 3 : terra[ax] + 0.5;
+        var alto = lontano ? H * (0.07 + 0.05 * w.rnd()) : H * (0.17 + 0.13 * w.rnd());
+        alberi.push({ x: ax, base: base, h: Math.max(4, alto), lontano: lontano });
+      }
+      alberi.sort(function (a, b) { return a.base - b.base; });
+      for (k = 0; k < alberi.length; k++) this.abete(alberi[k], celle);
+      this.baitaCelle(w, s, celle);
+      // la neve per terra: la superficie, e sotto una grana che va scurendo
+      for (i = 0; i < W; i++) {
+        var t0 = Math.floor(terra[i]);
+        for (j = t0; j < H; j++) {
+          // la superficie piena; sotto, cumuli (frattale) e qualche luccichio della luna
+          var g = frattale(i * 0.07, j * 0.3, 3), giu = (j - t0) / (H - t0 + 1);
+          if (j === t0) celle.push(i, j, 0.55, 2, 1);
+          else if (j === t0 + 1 && g > 0.35) celle.push(i, j, 0.35, 2, 0.85);
+          else if (g > 0.56) celle.push(i, j, 0.16 + 0.4 * (g - 0.56), g > 0.62 ? 2 : 3, 0.8 - 0.35 * giu);
+          else if (hash2(i * 13, j * 7) < 0.025) celle.push(i, j, 0.1, 0, 0.7);
+        }
+      }
+      // i fiocchi, a tre profondità (0 lontano, 2 vicino)
+      var nf = clamp(Math.round(W * H / 30), 40, 1800);
+      for (k = 0; k < nf; k++) s.fiocchi.push(this.fiocco(w, s, w.rnd() * H));
+      return s;
+    },
+    // un abete a tre piani, con la neve sul bordo di sopra di ogni piano
+    abete: function (a, celle) {
+      var h = a.h, piani = 3, lw = h * 0.36, prima = -1, al = a.lontano ? 0.55 : 1;
+      var tronco = Math.max(1, Math.round(h * 0.1));
+      for (var j = 0; j < h - tronco; j++) {
+        var u = j / (h - tronco), p = Math.min(piani - 1, Math.floor(u * piani)), q = u * piani - p;
+        var hw = lw * (0.25 + 0.75 * (p + 1) / piani) * (0.35 + 0.65 * q) + 0.2;
+        var y = Math.floor(a.base - h + j);
+        for (var i = Math.floor(a.x - hw); i <= a.x + hw; i++) {
+          var dx = Math.abs(i + 0.5 - a.x);
+          // neve dove il piano di sopra è più stretto (il bordo dei rami)
+          var neve = q < 0.34 || dx > prima;
+          var col = neve && hash2(i * 5, y * 3) < 0.8 ? 2 : (hash2(i, y * 7) < 0.4 ? 5 : 4);
+          celle.push(i, y, col === 2 ? 0.55 : 0.42 + 0.1 * hash2(i * 3, y), col, al);
+        }
+        prima = hw;
+      }
+      for (j = 0; j < tronco; j++) celle.push(Math.floor(a.x), Math.floor(a.base - tronco + j), 0.4, 13, al);
+    },
+    // la baita: pareti di assi, il tetto spiovente coperto di neve, la finestra, il camino
+    baitaCelle: function (w, s, celle) {
+      var b = s.baita, x0 = b.x, x1 = b.x + b.w, base = Math.floor(Math.min(s.terra[x0], s.terra[x1])) + 1;
+      var hm = Math.max(4, Math.round(b.w * 0.42)), ht = Math.max(3, Math.round(b.w * 0.36)), i, j;
+      var cima = base - hm - ht;
+      b.base = base; b.cima = cima;
+      for (j = base - hm; j < base; j++) {
+        for (i = x0; i < x1; i++) celle.push(i, j, (j % 2 ? 0.36 : 0.28) + 0.06 * hash2(i, j), 6, 1);
+      }
+      // la finestra (2 × 2 o più) e la porta
+      var fw = Math.max(2, Math.round(b.w * 0.18)), fx = x0 + Math.round(b.w * 0.18), fy = base - hm + Math.round(hm * 0.25);
+      b.fin = { x: fx, y: fy, w: fw, h: Math.max(2, Math.round(hm * 0.35)) };
+      var px = x0 + Math.round(b.w * 0.62), pw = Math.max(2, Math.round(b.w * 0.16));
+      for (j = base - Math.round(hm * 0.7); j < base; j++) for (i = px; i < px + pw; i++) celle.push(i, j, 0.2, 13, 1);
+      // il tetto: sporge di un po' ai lati, bordo rosso sotto e neve sopra
+      for (j = 0; j < ht; j++) {
+        var hw = (b.w / 2 + 1.5) * (j + 1) / ht, cx = x0 + b.w / 2, y = cima + j + 1;
+        for (i = Math.floor(cx - hw); i <= cx + hw; i++) {
+          var bordo = Math.abs(i + 0.5 - cx) > hw - 1.2;
+          celle.push(i, y, bordo ? 0.6 : 0.5 + 0.1 * hash2(i, y), bordo && j > ht * 0.4 ? 12 : 2, 1);
+        }
+      }
+      // il camino, con la neve in cima
+      var cx2 = Math.floor(x0 + b.w * 0.72), cy = cima + Math.round(ht * 0.45);
+      for (j = cy - 2; j <= cy; j++) { celle.push(cx2, j, 0.4, 12, 1); celle.push(cx2 + 1, j, 0.4, 12, 1); }
+      celle.push(cx2, cy - 3, 0.55, 2, 1); celle.push(cx2 + 1, cy - 3, 0.55, 2, 1);
+      b.camino = { x: cx2 + 1, y: cy - 4 };
+    },
+    fiocco: function (w, s, y) {
+      var z = w.rnd() < 0.45 ? 0 : w.rnd() < 0.6 ? 1 : 2;
+      return { x: w.rnd() * (w.cols + 20) - 10, y: y, z: z, v: [1.4, 2.6, 4.4][z] * (0.8 + 0.4 * w.rnd()), f: w.rnd() * TAU, sx: 0, sy: 0 };
+    },
+    clic: function (w, x, y, s) {
+      w.ripple(x, y, 7, 0.6, 0);
+      if (!s || !s.folate) return;
+      s.folate.push({ x: x, y: y, eta: 0 });
+      if (s.folate.length > 6) s.folate.shift();
+      // vicino a terra la neve si alza
+      var t = s.terra[clamp(Math.floor(x), 0, w.cols)];
+      if (y > t - 6) {
+        for (var k = 0; k < 26; k++) {
+          var a = -Math.PI * (0.15 + 0.7 * w.rnd());
+          s.sbuffi.push({ x: x + (w.rnd() - 0.5) * 5, y: t - 0.5, vx: Math.cos(a) * (3 + 6 * w.rnd()), vy: Math.sin(a) * (6 + 9 * w.rnd()), eta: 0 });
+        }
+        if (s.sbuffi.length > 200) s.sbuffi.splice(0, s.sbuffi.length - 200);
+      }
+    },
+    tick: function (w, dt, t, s) {
+      var W = w.cols, H = w.rows, k;
+      s.vento = 0.9 * Math.sin(t * 0.045) + 0.35 * Math.sin(t * 0.21 + 1.3);
+      for (k = s.folate.length - 1; k >= 0; k--) if ((s.folate[k].eta += dt) > 1.2) s.folate.splice(k, 1);
+      for (k = 0; k < s.fiocchi.length; k++) {
+        var f = s.fiocchi[k], sp = f.v;
+        // la folata: spinge via da dove si è cliccato
+        for (var q = 0; q < s.folate.length; q++) {
+          var fo = s.folate[q], dx = f.x - fo.x, dy = f.y - fo.y, d2 = dx * dx + dy * dy, R = 9 + fo.eta * 14;
+          if (d2 < R * R && fo.eta < 0.5) {
+            var d = Math.sqrt(d2) + 0.5, forza = (1 - d / R) * 40 * dt;
+            f.sx += dx / d * forza; f.sy += dy / d * forza;
+          }
+        }
+        f.sx *= Math.pow(0.25, dt); f.sy *= Math.pow(0.25, dt);
+        f.x += ((s.vento + 0.45 * Math.sin(t * 0.9 + f.f)) * sp * 0.6 + f.sx) * dt;
+        f.y += (sp + f.sy) * dt;
+        var fine = f.z === 0 ? s.collina[clamp(Math.floor(f.x), 0, W)] + 3 : s.terra[clamp(Math.floor(f.x), 0, W)] + (f.z === 2 ? 2 : 0);
+        if (f.y > fine || f.y < -8 || f.x < -14 || f.x > W + 14) {
+          var nuovo = this.fiocco(w, s, -1 - w.rnd() * 3);
+          // col vento i fiocchi entrano anche dai lati
+          if (s.vento > 0.3 && w.rnd() < 0.3) { nuovo.x = -2; nuovo.y = w.rnd() * H * 0.7; }
+          else if (s.vento < -0.3 && w.rnd() < 0.3) { nuovo.x = W + 2; nuovo.y = w.rnd() * H * 0.7; }
+          s.fiocchi[k] = nuovo;
+        }
+      }
+      // il fumo dal camino: sbuffi che salgono, si allargano e vanno col vento
+      var b = s.baita;
+      s.prossimoFumo = (s.prossimoFumo || 0) - dt;
+      if (b.camino && s.prossimoFumo <= 0) { s.fumo.push({ x: b.camino.x, y: b.camino.y, eta: 0 }); s.prossimoFumo = 0.35 + 0.3 * w.rnd(); }
+      for (k = s.fumo.length - 1; k >= 0; k--) {
+        var p = s.fumo[k];
+        p.eta += dt; p.y -= dt * 1.6; p.x += dt * (s.vento * 1.8 + 0.3 * Math.sin(p.eta * 1.7));
+        if (p.eta > 7) s.fumo.splice(k, 1);
+      }
+      for (k = s.sbuffi.length - 1; k >= 0; k--) {
+        var o = s.sbuffi[k];
+        // frenata dall'aria: in alto si ferma e poi ricade piano, come i fiocchi
+        o.eta += dt; o.vy = Math.min(1.6, o.vy + 7 * dt); o.vx *= Math.pow(0.3, dt);
+        o.x += (o.vx + s.vento * 1.5) * dt; o.y += o.vy * dt;
+        if ((o.eta > 0.3 && o.y > s.terra[clamp(Math.floor(o.x), 0, W)]) || o.eta > 8) s.sbuffi.splice(k, 1);
+      }
+    },
+    disegna: function (w, t, A, s) {
+      var C = this.c0, k;
+      for (k = 0; k < s.stelle.length; k += 3) {
+        var l = Math.sin(t * 1.1 + s.stelle[k + 2]) > 0.2 ? 0.5 : 0.25;
+        w.put(s.stelle[k], s.stelle[k + 1], 0.1, C + 10, A * l);
+      }
+      drawCells(w, s.fissi, C, A);
+      // la finestra accesa, che tremola un poco (il fuoco dentro)
+      var fi = s.baita.fin, luce = 0.85 + 0.15 * Math.round(Math.sin(t * 3.1) * Math.sin(t * 1.7 + 1) * 2) / 2;
+      for (var j = 0; j < fi.h; j++) for (var i = 0; i < fi.w; i++) w.put(fi.x + i, fi.y + j, 0.75, C + 7, A * luce, true);
+      for (k = 0; k < s.fumo.length; k++) {
+        var p = s.fumo[k], r = 0.4 + p.eta * 0.35, fa = A * 0.8 * Math.min(1, p.eta * 2) * (1 - p.eta / 7);
+        for (var q = 0; q < 5; q++) {
+          var a = q / 5 * TAU + p.eta;
+          w.put(Math.floor(p.x + Math.cos(a) * r), Math.floor(p.y + Math.sin(a) * r * 0.6), 0.35, C + 8, fa);
+        }
+      }
+    },
+    // i fiocchi davanti a tutto (anche alla baita e agli abeti)
+    sopra: function (w, t, A, s) {
+      var C = this.c0, k;
+      for (k = 0; k < s.fiocchi.length; k++) {
+        var f = s.fiocchi[k];
+        if (f.y < 0) continue;
+        w.put(Math.floor(f.x), Math.floor(f.y), f.z === 0 ? 0.3 : f.z === 1 ? 0.6 : 0.85, C + (f.z === 0 ? 1 : 0), A * (f.z === 0 ? 0.7 : f.z === 1 ? 0.65 : 1));
+      }
+      for (k = 0; k < s.sbuffi.length; k++) {
+        var o = s.sbuffi[k];
+        w.put(Math.floor(o.x), Math.floor(o.y), 0.8, C, A * Math.min(1, (8 - o.eta) / 2));
+      }
+    }
+  });
+  // ==== fine neve ====
+
   /* ------------------------------------------------------------------ */
   /* File dell'utente. L'app mette in window.ZOO_SCENE i file .js della   */
   /* cartella "scene" (vedi app/src/scene.rs). Due tipi:                  */
@@ -3332,13 +3551,15 @@ h1 {
     PALETTE.push(sp.dot);
   });
 
-  // colori con un carattere fisso: 1 = sempre 'o' (cibo), 2 = 'o' piccola o 'O' grande (bolle)
+  // colori con un carattere fisso: 1 = sempre 'o' (cibo), 2 = 'o' piccola o 'O' grande (bolle),
+  // 3 = '*' o, se tenue, '.' (fiocchi di neve)
   var GLYPH = new Uint8Array(PALETTE.length);
   GLYPH[1] = 1;
+  GLYPH[4] = 3;
   GLYPH[byId('meduse').c0 + byId('meduse').sc0] = 2;
   SPECIES.forEach(function (sp) {
-    if (!Array.isArray(sp.tondi)) return;
-    sp.tondi.forEach(function (k) { if (k >= 0 && k < sp.pal.length) GLYPH[sp.c0 + k] = 1; });
+    if (Array.isArray(sp.tondi)) sp.tondi.forEach(function (k) { if (k >= 0 && k < sp.pal.length) GLYPH[sp.c0 + k] = 1; });
+    if (Array.isArray(sp.fiocchi)) sp.fiocchi.forEach(function (k) { if (k >= 0 && k < sp.pal.length) GLYPH[sp.c0 + k] = 3; });
   });
 
   /* ------------------------------------------------------------------ */
@@ -3432,6 +3653,8 @@ h1 {
     this.grgb = this.rgb.map(satura);
     this.chiaro = false;
     this.tc = TEMI.scuro;
+    this.neveOpz = true; // la neve delle feste (vedi neveFeste): accesa anche nel browser
+    this.neveA = 0;
     this._seed = (Date.now() ^ 0x9e3779b9) >>> 0;
     this.running = false;
     this._tick = this._tick.bind(this);
@@ -3538,7 +3761,7 @@ h1 {
   // che sfuma). I colori di una specie vanno da c0 a cd, il pallino, uno dopo l'altro.
   Zoo.prototype.coloriInUso = function () {
     var usa = new Uint8Array(PALETTE.length), specie = [this.species, this.sceneSp], i, k;
-    for (i = 0; i < 4; i++) usa[i] = 1;
+    for (i = 0; i < 5; i++) usa[i] = 1;
     for (i = 0; i < this.creatures.length; i++) specie.push(this.creatures[i].kind);
     for (k = 0; k < specie.length; k++) {
       var sp = specie[k];
@@ -3686,6 +3909,57 @@ h1 {
     this.creatures.forEach(function (c) { c.a = 1; });
     this.sceneSp = this.species && this.species.under ? this.species : null;
     this.sceneA = this.sceneSp ? 1 : 0;
+    this.neveA = this.neveVuole() ? 1 : 0;
+  };
+
+  /* Neve delle feste: dal 1° dicembre al 6 gennaio un po' di neve cade su tutti gli sfondi,
+     davanti a tutto ma dietro le parti più luminose degli animali (put la scarta dove c'è già
+     qualcosa di più acceso). Non sugli sfondi dove non ha senso: sott'acqua, sotto la pioggia,
+     e nel paesaggio della neve, che ha la sua. Si spegne dal menu ("Neve durante le feste"). */
+  var SENZA_NEVE = { meduse: 1, pioggia: 1, neve: 1 };
+  function festeOggi() {
+    var d = new Date();
+    return d.getMonth() === 11 || (d.getMonth() === 0 && d.getDate() <= 6);
+  }
+  Zoo.prototype.neveVuole = function () {
+    var sp = this.species;
+    if (!this.neveOpz || !sp || SENZA_NEVE[sp.base || sp.id] || SENZA_NEVE[sp.id]) return false;
+    if (this.neveOpz === 'sempre') return true;
+    // la data si guarda una volta al minuto
+    var t = Date.now();
+    if (!(t < this.neveOra)) { this.neveOra = t + 60000; this.neveOggi = festeOggi(); }
+    return this.neveOggi;
+  };
+  Zoo.prototype.neveFiocco = function (y) {
+    var z = this.rnd() < 0.55 ? 0 : 1;
+    return { x: this.rnd() * this.cols, y: y, z: z, v: (z ? 2.6 : 1.4) * (0.8 + 0.4 * this.rnd()), f: this.rnd() * TAU };
+  };
+  Zoo.prototype.neveFeste = function (dt) {
+    var vuole = this.neveVuole();
+    this.neveA = clamp((this.neveA || 0) + (vuole ? dt * 0.5 : -dt * 0.8), 0, 1);
+    if (this.neveA <= 0) { if (this.neveF) this.neveF = null; return; }
+    var n = clamp(Math.round(this.cols * this.rows / 85), 15, 600), f = this.neveF, k;
+    if (!f || f.n !== n) {
+      f = this.neveF = [];
+      f.n = n;
+      for (k = 0; k < n; k++) f.push(this.neveFiocco(this.rnd() * this.rows));
+    }
+    var vento = 0.5 * Math.sin(this.t * 0.04) + 0.2 * Math.sin(this.t * 0.17 + 2);
+    for (k = 0; k < f.length; k++) {
+      var p = f[k];
+      p.y += p.v * dt;
+      p.x += (vento + 0.4 * Math.sin(this.t * 0.8 + p.f)) * p.v * 0.5 * dt;
+      if (p.x < -2) p.x += this.cols + 3; else if (p.x > this.cols + 1) p.x -= this.cols + 3;
+      if (p.y >= this.rows) f[k] = this.neveFiocco(-this.rnd() * 2);
+    }
+  };
+  Zoo.prototype.disegnaNeve = function () {
+    var f = this.neveF, A = this.neveA;
+    if (!f || !(A > 0)) return;
+    for (var k = 0; k < f.length; k++) {
+      var p = f[k];
+      if (p.y >= 0) this.put(Math.floor(p.x), Math.floor(p.y), p.z ? 0.75 : 0.3, 4, A * (p.z ? 0.8 : 0.5));
+    }
   };
 
   Zoo.prototype.ripple = function (x, y, r, life, color) {
@@ -3761,6 +4035,7 @@ h1 {
     } else if (want) this.sceneA = Math.min(1, (this.sceneA || 0) + dt * 0.8);
     var ss = this.sceneSp;
     if (ss && this.sceneA > 0 && ss.tick) ss.tick(this, dt, t, this.sceneData(ss));
+    this.neveFeste(dt);
   };
 
   // stato della scenografia di una specie, rifatto se cambia la griglia
@@ -3898,6 +4173,7 @@ h1 {
       this.put(Math.floor(f.x), Math.floor(f.y), 0.6, 1, fa);
     }
     if (scn && scn.over) scn.over(this, this.t, this.sceneA, sd);
+    this.disegnaNeve();
 
     // Sul canvas si ridisegnano solo le celle cambiate dal fotogramma prima
     // (chiave = colore, carattere, trasparenza) e si cancellano quelle che si sono
@@ -3917,6 +4193,7 @@ h1 {
       var gl = GLYPH[col];
       if (gl === 1 || (gl === 2 && v <= 0.5)) { lvl = 9; alt = 0; } // 'o': il cibo, le bolle piccole
       else if (gl === 2) { lvl = 12; alt = 1; }                      // 'O': le bolle grandi
+      else if (gl === 3) { lvl = v > 0.5 ? 8 : 0; alt = 0; }          // '*' e '.': i fiocchi
       var aq = Math.round((al > 1 ? 1 : al < 0 ? 0 : al) * 255);
       var key = ((col * 2 + alt) * LEVELS + lvl) * 256 + aq;
       if (key !== shown[k]) {
@@ -4514,6 +4791,8 @@ h1 {
     if (name === 'tema') { setTema(val); return; }
     if (name === 'fps') { zoo.setFps(val); return; }
     if (name === 'vsync') { zoo.vsync = val === true || val === 'true'; return; }
+    // neve delle feste: true (dal 1° dicembre al 6 gennaio), false, 'sempre' (per le prove)
+    if (name === 'neve') { zoo.neveOpz = val === 'sempre' ? 'sempre' : val === true || val === 'true'; return; }
     if (name === 'nomi') { zoo.setNames(asObject(val)); return; }
     if (name === 'rotazione') {
       var r = asObject(val);
@@ -5014,8 +5293,12 @@ h1 {
      (LivelyProperties.json; Lively chiama livelyPropertyListener). */
   var qo = /[?&]orologio=([^&#]*)/.exec(location.search);
   if (qo) zoo.setClock(!/^(0|no|off|false)$/i.test(qo[1]));
+  // la neve delle feste: index.html?neve=0 la spegne, ?neve=sempre la fa cadere anche fuori stagione
+  var qn = /[?&]neve=([^&#]*)/.exec(location.search);
+  if (qn) zoo.neveOpz = /^sempre$/i.test(qn[1]) ? 'sempre' : !/^(0|no|off|false)$/i.test(qn[1]);
   window.livelyPropertyListener = function (name, val) {
     if (name === 'orologio') zoo.setClock(val === true || val === 'true');
+    if (name === 'neve') zoo.neveOpz = val === true || val === 'true';
     // le tendine di Lively passano la posizione della voce scelta
     if (name === 'tema') setTema(['scuro', 'chiaro', 'auto'][+val] || val);
   };

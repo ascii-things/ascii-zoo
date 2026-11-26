@@ -4,6 +4,11 @@
     "type": "checkbox",
     "value": true
   },
+  "neve": {
+    "text": "Neve durante le feste (1/12 – 6/1)",
+    "type": "checkbox",
+    "value": true
+  },
   "tema": {
     "text": "Tema",
     "type": "dropdown",

@@ -66,8 +66,9 @@ jobs:
           $dir = Join-Path $env:APPDATA 'AsciiZoo\scene'
           New-Item -ItemType Directory -Force $dir | Out-Null
           Copy-Item scene\lucciole.js $dir
-          # lucciole (voce 18: dopo 11 animali e 6 paesaggi) e tema chiaro: a pagina caricata devono
-          # esserci già, dalle impostazioni messe prima della pagina (script iniziale, ZOO_INIZIO)
+          # lucciole e tema chiaro: a pagina caricata devono esserci già, dalle impostazioni messe prima
+          # della pagina (script iniziale, ZOO_INIZIO). La 18 è scritta come nella 0.9 (11 animali, 6
+          # paesaggi, senza paesaggi_di_serie): con la Neve l'app la sposta da sola alla 19
           # avviso di aggiornamento: una versione 99.0.0 vista "ieri" mette la voce in cima al menu; il
           # controllo subito (ASCII_ZOO_AGGIORNAMENTI_SUBITO) chiede a GitHub con il curl di Windows,
           # trova l'ultima vera e la voce se ne va
@@ -82,8 +83,8 @@ jobs:
           Get-Content scene-win.log | Select-String 'scena|avvio|aggiornamenti'
           $file = @(Get-ChildItem (Join-Path $dir 'di-serie') -Filter *.js)
           "di-serie: $($file.Count) file: $($file.Name -join ', ')"
-          # 11 animali e 6 paesaggi
-          if ($file.Count -ne 17) { Write-Error "in di-serie ci sono $($file.Count) file invece di 17"; exit 1 }
+          # 11 animali e 7 paesaggi
+          if ($file.Count -ne 18) { Write-Error "in di-serie ci sono $($file.Count) file invece di 18"; exit 1 }
           if (-not (Select-String -Path scene-win.log -Pattern 'scena lucciole: "Lucciole"' -Quiet)) { Write-Error "lucciole.js non letta"; exit 1 }
           if (-not (Select-String -Path scene-win.log -Pattern 'mostra lucciole, tema chiaro' -Quiet)) { Write-Error "a pagina caricata non ci sono già lucciole e tema chiaro (script iniziale)"; exit 1 }
           if (-not (Select-String -Path scene-win.log -SimpleMatch -Pattern 'nel menu la versione 99.0.0 (Ok(()))' -Quiet)) { Write-Error "la voce dell'aggiornamento non è nel menu"; exit 1 }
@@ -343,10 +344,10 @@ jobs:
           kill "$pid"
 
       # scene tue: con la cartella delle scene l'app scrive un file per ogni animale di serie in
-      # scene/di-serie (11 animali e 6 paesaggi), e lucciole.js è la voce 18 del menu Sfondo (dopo
-      # "A rotazione", gli 11 animali e i 6 paesaggi): nella foto l'erba con le lucciole. Il
-      # config.json è scritto come una versione fino alla 0.8 (9 animali, posizione 16, senza
-      # animali_di_serie): l'app lo sposta da sola alla 18, così si prova anche la migrazione
+      # scene/di-serie (11 animali e 7 paesaggi), e lucciole.js è la voce 19 del menu Sfondo (dopo
+      # "A rotazione", gli 11 animali e i 7 paesaggi): nella foto l'erba con le lucciole. Il
+      # config.json è scritto come una versione fino alla 0.8 (9 animali e 6 paesaggi, posizione
+      # 16, senza animali_di_serie): l'app lo sposta da sola alla 19, così si prova anche la migrazione
       - name: Prova - scene tue
         continue-on-error: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: |
@@ -365,13 +366,15 @@ jobs:
           grep "scena" scene-macos.log || true
           ls "$dir/scene/di-serie"
           n=$(ls "$dir/scene/di-serie"/*.js | wc -l | tr -d ' ')
-          [ "$n" = 17 ] || { echo "::error::in di-serie ci sono $n file invece di 17"; exit 1; }
+          [ "$n" = 18 ] || { echo "::error::in di-serie ci sono $n file invece di 18"; exit 1; }
           grep -q 'scena lucciole: "Lucciole"' scene-macos.log || { echo "::error::lucciole.js non letta"; exit 1; }
           # a pagina caricata le lucciole ci sono già: lo script iniziale (ZOO_INIZIO) funziona anche
-          # in WKWebView, e la posizione 16 della 0.8 è diventata la 18
+          # in WKWebView, e la posizione 16 della 0.8 è diventata la 19
           grep "avvio:" scene-macos.log || true
           grep -q "mostra lucciole" scene-macos.log || { echo "::error::a pagina caricata non mostra le lucciole (script iniziale o migrazione)"; exit 1; }
           grep "aggiornamenti" scene-macos.log || true
+          # la stessa richiesta fatta a mano (per capire un errore di curl dell'app)
+          /usr/bin/curl -sS -o /dev/null -w "curl a mano: HTTP %{http_code}, %{time_total} s\n" -A ascii-zoo-ci https://api.github.com/repos/ascii-things/ascii-zoo/releases/latest || echo "curl a mano: uscita $?"
           grep -qF "nel menu la versione 99.0.0 (Ok(()))" scene-macos.log || { echo "::error::la voce dell'aggiornamento non è nel menu"; exit 1; }
           if grep -q "controllo non riuscito" scene-macos.log; then echo "::warning::GitHub non ha risposto (rete o limite delle richieste)"
           else grep -qF "voce tolta dal menu (Ok(()))" scene-macos.log || { echo "::error::il controllo degli aggiornamenti non è finito"; exit 1; }; fi
