@@ -453,8 +453,16 @@ pub struct Core {
     pomodoro: Pomodoro,
     /// ultimo titolo del sottomenu "Pomodoro" (si cambia solo quando cambia)
     pomodoro_titolo: String,
-    /// "Rotazione > Spenta": lo sfondo che la pagina dice di mostrare (1.., come `animale`), quando risponde
-    animale_mostrato: std::sync::Arc<std::sync::Mutex<Option<u32>>>,
+    /// "Rotazione > Spenta": gli sfondi che le pagine dicono di mostrare, man mano che rispondono
+    animale_mostrato: std::sync::Arc<std::sync::Mutex<Option<Fermo>>>,
+}
+
+/// "Rotazione > Spenta": le risposte delle pagine (id dello schermo → sfondo mostrato, 1.. come
+/// `animale`), quante se ne aspettano e da quando
+struct Fermo {
+    attese: usize,
+    arrivate: std::collections::BTreeMap<String, u32>,
+    da: std::time::Instant,
 }
 
 /// lo sfondo che la pagina mostra adesso: 1.. come `animale` nelle impostazioni (0 = non si sa)
@@ -686,35 +694,98 @@ impl Core {
         }
     }
 
-    /// "Rotazione > Spenta": chiede alla pagina quale animale mostra (risponde dopo)
-    pub fn chiedi_animale(&self, webview: &wry::WebView) {
-        let mostrato = self.animale_mostrato.clone();
-        let fatto = webview.evaluate_script_with_callback(JS_ANIMALE, move |r| {
-            let i = r.trim().parse::<u32>().unwrap_or(0);
-            if (1..=specie().len() as u32).contains(&i) {
-                if let Ok(mut m) = mostrato.lock() {
-                    *m = Some(i);
+    /// "Rotazione > Spenta": c'è qualcosa che gira? Tutti gli schermi ("A rotazione") o, con
+    /// due o più schermi, uno con "A rotazione" suo
+    fn gira_qualcosa(&self) -> bool {
+        self.cfg.animale == 0 || (self.schermi.len() >= 2 && self.cfg.animale_schermi.values().any(|a| *a == 0))
+    }
+
+    /// "Rotazione > Spenta": chiede a ogni schermo (id, pagina) che sfondo mostra; le risposte
+    /// arrivano dopo e le applica `risposta_animale`
+    pub fn chiedi_animale<'a>(&self, pagine: impl Iterator<Item = (&'a str, &'a wry::WebView)>) {
+        let pagine: Vec<_> = pagine.collect();
+        if let Ok(mut m) = self.animale_mostrato.lock() {
+            *m = Some(Fermo { attese: pagine.len(), arrivate: Default::default(), da: std::time::Instant::now() });
+        }
+        for (id, webview) in pagine {
+            let mostrato = self.animale_mostrato.clone();
+            let id = id.to_string();
+            let fatto = webview.evaluate_script_with_callback(JS_ANIMALE, move |r| {
+                let i = r.trim().parse::<u32>().unwrap_or(0);
+                if (1..=specie().len() as u32).contains(&i) {
+                    if let Ok(mut m) = mostrato.lock() {
+                        if let Some(f) = m.as_mut() {
+                            f.arrivate.insert(id.clone(), i);
+                        }
+                    }
                 }
+            });
+            if let Err(e) = fatto {
+                zoo_log!("rotazione: la pagina non risponde: {e}");
             }
-        });
-        if let Err(e) = fatto {
-            zoo_log!("rotazione: la pagina non risponde: {e}");
         }
     }
 
-    /// la risposta di `chiedi_animale`, se è arrivata: quell'animale diventa fisso (come
-    /// sceglierlo in "Animale"). true = le pagine vanno aggiornate (`js_schermo`)
+    /// Le risposte di `chiedi_animale`, quando sono arrivate tutte (o dopo un secondo quelle che
+    /// ci sono): ogni schermo resta sullo sfondo che mostrava. "Tutti gli schermi" prende
+    /// quello del primo schermo; un altro schermo che ne mostrava uno diverso (la sua lista in
+    /// rotazione, la sua "A rotazione") lo tiene come scelta sua. true = le pagine vanno
+    /// aggiornate (`js_schermo`)
     pub fn risposta_animale(&mut self) -> bool {
-        let Some(i) = self.animale_mostrato.lock().ok().and_then(|mut m| m.take()) else { return false };
-        zoo_log!("rotazione spenta: resta {}", specie().get(i as usize - 1).map(|s| s.id).unwrap_or("?"));
-        self.cfg.animale = i;
+        let fermo = {
+            let Ok(mut m) = self.animale_mostrato.lock() else { return false };
+            let Some(f) = m.as_ref() else { return false };
+            let tutte = f.arrivate.len() >= f.attese;
+            let tardi = f.da.elapsed() > std::time::Duration::from_secs(1);
+            if !tutte && !tardi {
+                return false;
+            }
+            let f = m.take();
+            match f {
+                Some(f) if !f.arrivate.is_empty() => f,
+                _ => {
+                    zoo_log!("rotazione: nessuna pagina ha detto che sfondo mostra");
+                    return false;
+                }
+            }
+        };
+        let primo = self.schermi.first().and_then(|s| fermo.arrivate.get(&s.id)).or_else(|| fermo.arrivate.values().next());
+        if self.cfg.animale == 0 {
+            if let Some(&i) = primo {
+                self.cfg.animale = i;
+            }
+        }
+        if self.schermi.len() >= 2 {
+            for (id, &i) in &fermo.arrivate {
+                let tiene = match self.cfg.animale_schermi.get(id) {
+                    Some(0) => true,
+                    None => i != self.cfg.animale,
+                    Some(_) => false,
+                };
+                if tiene {
+                    self.cfg.animale_schermi.insert(id.clone(), i);
+                }
+            }
+        }
+        for (id, i) in &fermo.arrivate {
+            zoo_log!("rotazione spenta: {id} resta su {}", specie().get(*i as usize - 1).map(|s| s.id).unwrap_or("?"));
+        }
         self.segna_animale();
+        self.segna_sfondo_schermi();
         self.cfg.save();
         true
     }
 
-    /// tutte le impostazioni di uno schermo, da mandare quando la sua pagina ha finito di caricare
-    /// (`in_carica`: vedi js_in_carica)
+    /// le spunte di "Sfondo" > ogni schermo secondo la configurazione
+    fn segna_sfondo_schermi(&self) {
+        for ss in &self.menus.sfondo_schermi {
+            let attuale = self.cfg.animale_schermi.get(&ss.id).map(|a| *a as usize + 1).unwrap_or(0);
+            for (j, v) in ss.voci.iter().enumerate() {
+                v.set_checked(j == attuale);
+            }
+        }
+    }
+
     /// Le impostazioni di uno schermo come script che la WebView esegue prima della pagina
     /// (`with_initialization_script`): la pagina le applica prima del primo fotogramma
     /// (ZOO_INIZIO), così lo sfondo compare già con il tema, lo sfondo scelto, l'orologio e i
@@ -732,6 +803,8 @@ impl Core {
         s
     }
 
+    /// tutte le impostazioni di uno schermo, da mandare quando la sua pagina ha finito di caricare
+    /// (`in_carica`: vedi js_in_carica)
     pub fn js_tutto(&self, in_carica: bool, schermo: &str) -> Vec<String> {
         let mut v = vec![
             self.js_tema(),
@@ -841,7 +914,7 @@ impl Core {
         // restano com'erano finché non risponde (il menu le cambia da solo al clic)
         if m.rot_spenta.id().0 == id {
             self.segna_animale();
-            return if self.cfg.animale == 0 { Esito::FermaRotazione } else { Esito::Niente };
+            return if self.gira_qualcosa() { Esito::FermaRotazione } else { Esito::Niente };
         }
         // un intervallo: la rotazione riparte, se era spenta
         if let Some(i) = m.rot_tempi.iter().position(|x| x.id().0 == id) {

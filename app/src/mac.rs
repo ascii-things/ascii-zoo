@@ -576,11 +576,7 @@ pub fn run() {
             }
             Esito::Schermi => app.push_schermi(),
             Esito::Foto => foto::scatta(app.screens.iter().map(|s| &s.webview)),
-            Esito::FermaRotazione => {
-                if let Some(s) = app.screens.first() {
-                    app.core.chiedi_animale(&s.webview);
-                }
-            }
+            Esito::FermaRotazione => app.core.chiedi_animale(app.screens.iter().map(|s| (s.id.as_str(), &s.webview))),
             Esito::Ricarica => {
                 for s in &mut app.screens {
                     s.paused = false;
