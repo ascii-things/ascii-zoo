@@ -9,6 +9,9 @@
 #   3. solo se la 2 era senza XWayland: la stessa app su XWayland (ASCII_ZOO_SFONDO=x11), per
 #      confrontare i due modi
 #   4. app con WebKitGTK tutto in software (WEBKIT_DISABLE_COMPOSITING_MODE=1)
+#   5. app normale a 15 e a 5 fotogrammi al secondo (ASCII_ZOO_FOTOGRAMMI, senza cambiare le
+#      impostazioni): con le misure a 30 dice, processo per processo, quanto costa comunque
+#      (fisso) e quanto ogni fotogramma in più
 # Ognuna: 10 secondi per partire, poi 20 di misura, con i fotogrammi che la pagina ha fatto
 # davvero. Alla fine l'app riparte come prima.
 #
@@ -21,7 +24,10 @@ RAPPORTO="$HOME/ascii-zoo-prestazioni.txt"
 ATTESA=${ATTESA:-10}
 DURATA=${DURATA:-20}
 LOG=$(mktemp)
-trap 'rm -f "$LOG"' EXIT
+# le misure, una riga per processo: scenario nome core
+MISURE=$(mktemp)
+trap 'rm -f "$LOG" "$MISURE"' EXIT
+SCENARIO=""
 
 # --wayland c'era fino alla 0.6.0 (Wayland nativo come finestra normale): ora è il modo normale
 if [ "${1:-}" = --wayland ]; then shift; fi
@@ -63,6 +69,8 @@ misura() {
     pid_di "$nome" >/dev/null || continue
     awk -v a="${prima[$nome]}" -v b="$(cpu_di "$nome")" -v hz="$HZ" -v d="$DURATA" -v n="$NCPU" -v nome="$nome" \
       'BEGIN { c = (b - a) / hz / d; printf "  %-22s %5.2f core  (%4.1f%% di tutta la CPU)\n", nome, c, c * 100 / n }'
+    [ -n "$SCENARIO" ] && awk -v a="${prima[$nome]}" -v b="$(cpu_di "$nome")" -v hz="$HZ" -v d="$DURATA" \
+      -v s="$SCENARIO" -v nome="$nome" 'BEGIN { printf "%s %s %.4f\n", s, nome, (b - a) / hz / d }' >> "$MISURE"
   done
 }
 
@@ -153,7 +161,7 @@ for k in chiavi:
   echo
 } >> "$RAPPORTO"
 
-echo "Misuro per circa 2 minuti e mezzo: lascia il desktop visibile e non usare il PC." >&2
+echo "Misuro per circa 3 minuti e mezzo: lascia il desktop visibile e non usare il PC." >&2
 c_era=$(pgrep -x ascii-zoo >/dev/null && echo si || echo no)
 
 chiudi_app
@@ -161,12 +169,34 @@ echo "== app chiusa" | tee -a "$RAPPORTO"
 sleep 3
 misura | tee -a "$RAPPORTO"
 
-prova "app normale"
+SCENARIO=30
+prova "app normale (a 30 fotogrammi al secondo)" ASCII_ZOO_FOTOGRAMMI=30
+SCENARIO=""
 # senza XWayland? allora anche su XWayland, per confrontare
 if grep -q "sfondo: Wayland" "$LOG"; then
   prova "la stessa app su XWayland (ASCII_ZOO_SFONDO=x11), per confronto" ASCII_ZOO_SFONDO=x11
 fi
 prova "WebKitGTK tutto in software" WEBKIT_DISABLE_COMPOSITING_MODE=1
+SCENARIO=15
+prova "app normale a 15 fotogrammi al secondo" ASCII_ZOO_FOTOGRAMMI=15
+SCENARIO=5
+prova "app normale a 5 fotogrammi al secondo" ASCII_ZOO_FOTOGRAMMI=5
+SCENARIO=""
+# fisso e per fotogramma: la retta che passa meglio per i tre punti (30, 15, 5)
+{
+  echo "== costo fisso e per fotogramma (dalle misure a 30, 15 e 5 fotogrammi al secondo)"
+  awk '
+    { f[$2] = f[$2] " " $1 ":" $3; nomi[$2] = 1 }
+    END {
+      for (n in nomi) {
+        k = split(f[n], p, " "); sx = sy = sxx = sxy = m = 0
+        for (i = 1; i <= k; i++) { split(p[i], q, ":"); x = q[1] + 0; y = q[2] + 0; sx += x; sy += y; sxx += x * x; sxy += x * y; m++ }
+        if (m < 2 || m * sxx - sx * sx == 0) continue
+        b = (m * sxy - sx * sy) / (m * sxx - sx * sx); a = (sy - b * sx) / m
+        printf "  %-22s fisso %5.2f core, ogni fotogramma al secondo in più %.4f core (a 30: %.2f)\n", n, a, b, a + 30 * b
+      }
+    }' "$MISURE" | sort
+} | tee -a "$RAPPORTO"
 
 chiudi_app
 if [ "$c_era" = si ]; then

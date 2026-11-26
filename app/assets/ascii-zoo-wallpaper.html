@@ -4559,7 +4559,8 @@ h1 {
   // limite, non cambia niente
   Zoo.prototype.setFps = function (n) {
     n = parseInt(n, 10);
-    if (this.fps && n >= 15 && n <= 60) this.fps = n;
+    // nel menu 30, 20 o 15; meno solo per le misure (linux/prestazioni.sh)
+    if (this.fps && n >= 2 && n <= 60) this.fps = n;
   };
 
   // senza limite di fotogrammi (la pagina nel browser): requestAnimationFrame

@@ -557,8 +557,15 @@ impl Core {
         format!("window.zooSetting && zooSetting('nomi', {nomi})")
     }
 
+    /// ASCII_ZOO_FOTOGRAMMI=n (da 2 a 60) vale più del menu, senza cambiare le impostazioni:
+    /// per linux/prestazioni.sh, che misura a 30, 15 e 5 fotogrammi al secondo
     pub fn js_fotogrammi(&self) -> String {
-        format!("window.zooSetting && zooSetting('fps', {})", self.cfg.fotogrammi)
+        let n = std::env::var("ASCII_ZOO_FOTOGRAMMI")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .filter(|n| (2..=60).contains(n))
+            .unwrap_or(self.cfg.fotogrammi);
+        format!("window.zooSetting && zooSetting('fps', {n})")
     }
 
     pub fn js_orologio(&self) -> String {
