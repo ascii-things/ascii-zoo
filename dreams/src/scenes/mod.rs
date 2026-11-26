@@ -5,6 +5,7 @@ use crate::grid::Griglia;
 mod aurora;
 mod fire;
 mod sea;
+mod snow;
 mod rain;
 mod stars;
 mod life;
@@ -22,6 +23,7 @@ pub const SCENE: &[(&str, &str)] = &[
     ("aurora", "Aurora"),
     ("vita", "Game of Life"),
     ("mare", "Night sea"),
+    ("neve", "Snow"),
 ];
 
 pub fn esiste(id: &str) -> bool {
@@ -35,6 +37,7 @@ pub fn crea(id: &str, w: usize, h: usize, seme: u64) -> Box<dyn Scena> {
         "aurora" => Box::new(aurora::Aurora::new(w, h, seme)),
         "vita" => Box::new(life::Vita::new(w, h, seme)),
         "mare" => Box::new(sea::Mare::new(w, h, seme)),
+        "neve" => Box::new(snow::Neve::new(w, h, seme)),
         _ => Box::new(stars::Stelle::new(w, h, seme)),
     }
 }

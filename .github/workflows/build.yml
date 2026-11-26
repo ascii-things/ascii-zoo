@@ -96,7 +96,7 @@ jobs:
         working-directory: dreams
         run: |
           cargo build --release --locked
-          for s in stelle pioggia fuoco aurora vita mare; do
+          for s in stelle pioggia fuoco aurora vita mare neve; do
             ./target/release/ascii-dreams.exe --png "prova-$s.png" --scena "$s" --secondi 2
             test -s "prova-$s.png"
           done
