@@ -256,7 +256,7 @@ impl App {
             return;
         }
         drop_screens(&mut self.screens);
-        self.screens = make_screens(self.hinst, &mons);
+        self.screens = make_screens(self.hinst, &mons, &self.core);
         // le impostazioni arrivano quando le pagine hanno finito di caricare (PAGE_READY)
     }
 
@@ -315,6 +315,7 @@ impl App {
         if PAGE_READY.swap(false, Ordering::SeqCst) {
             // una pagina (ri)caricata non sa niente: si rimanda tutto, margini compresi
             for s in &mut self.screens {
+                shared::log_pagina_pronta(&s.webview, &s.id);
                 s.margini = None;
             }
             self.push_settings();
@@ -375,7 +376,7 @@ fn monitors() -> Vec<(RECT, Schermo)> {
 }
 
 /// finestra + WebView dietro le icone, sopra il monitor `rect`
-unsafe fn make_screen(hinst: HINSTANCE, rect: RECT, id: String) -> Option<Screen> {
+unsafe fn make_screen(hinst: HINSTANCE, rect: RECT, id: String, iniziale: &str) -> Option<Screen> {
     let hwnd = CreateWindowExW(
         WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
         w!("AsciiZooWallpaper"),
@@ -402,6 +403,7 @@ unsafe fn make_screen(hinst: HINSTANCE, rect: RECT, id: String) -> Option<Screen
         .with_navigation_handler(shared::navigazione_permessa)
         .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
         .with_url(URL)
+        .with_initialization_script(iniziale)
         .with_background_color((9, 10, 15, 255))
         .with_devtools(false)
         .with_on_page_load_handler(|ev, _url| {
@@ -411,7 +413,10 @@ unsafe fn make_screen(hinst: HINSTANCE, rect: RECT, id: String) -> Option<Screen
         })
         .build(&Host(hwnd));
     match built {
-        Ok(webview) => Some(Screen { webview, hwnd, parent: embed.parent, rect, id, paused: false, margini: None }),
+        Ok(webview) => {
+            zoo_log!("avvio: schermo {id}: finestra e WebView pronte a {} ms dall'avvio", shared::ms_dall_avvio());
+            Some(Screen { webview, hwnd, parent: embed.parent, rect, id, paused: false, margini: None })
+        }
         Err(_) => {
             let _ = DestroyWindow(hwnd);
             None
@@ -419,8 +424,10 @@ unsafe fn make_screen(hinst: HINSTANCE, rect: RECT, id: String) -> Option<Screen
     }
 }
 
-fn make_screens(hinst: HINSTANCE, mons: &[(RECT, Schermo)]) -> Vec<Screen> {
-    mons.iter().filter_map(|(r, s)| unsafe { make_screen(hinst, *r, s.id.clone()) }).collect()
+/// gli sfondi, con le impostazioni di ogni schermo già nella pagina dal primo fotogramma (il
+/// Core deve già conoscere gli schermi: set_schermi prima)
+fn make_screens(hinst: HINSTANCE, mons: &[(RECT, Schermo)], core: &Core) -> Vec<Screen> {
+    mons.iter().filter_map(|(r, s)| unsafe { make_screen(hinst, *r, s.id.clone(), &core.script_iniziale(&s.id)) }).collect()
 }
 
 fn drop_screens(screens: &mut Vec<Screen>) {
@@ -631,15 +638,15 @@ pub fn run() {
         TASKBAR_CREATED.store(RegisterWindowMessageW(w!("TaskbarCreated")), Ordering::SeqCst);
         CTL.store(ctl.0 as isize, Ordering::SeqCst);
 
+        // prima le impostazioni e gli schermi, poi gli sfondi: ognuno parte già con le sue
         let mons = monitors();
-        let screens = make_screens(hinst, &mons);
+        let (mut core, menu) = Core::new(true);
+        core.set_schermi(mons.iter().map(|m| m.1.clone()).collect());
+        let screens = make_screens(hinst, &mons, &core);
         if screens.is_empty() {
             MessageBoxW(None, w!("Non riesco a trovare il desktop di Windows."), w!("ASCII Zoo"), MB_ICONERROR);
             return;
         }
-
-        let (mut core, menu) = Core::new(true);
-        core.set_schermi(mons.into_iter().map(|m| m.1).collect());
         let tray = TrayIconBuilder::new()
             .with_menu(Box::new(menu.clone()))
             .with_tooltip("ASCII Zoo")

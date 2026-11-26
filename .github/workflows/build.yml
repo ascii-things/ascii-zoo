@@ -71,7 +71,8 @@ jobs:
           Start-Sleep 15
           Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
           Start-Sleep 2
-          Get-Content scene-win.log | Select-String 'scena'
+          # anche i tempi dell'avvio (finestra e WebView, pagina caricata, primo fotogramma)
+          Get-Content scene-win.log | Select-String 'scena|avvio'
           $file = @(Get-ChildItem (Join-Path $dir 'di-serie') -Filter *.js)
           "di-serie: $($file.Count) file: $($file.Name -join ', ')"
           # 11 animali e 6 paesaggi

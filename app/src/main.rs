@@ -52,6 +52,7 @@ mod linux;
 compile_error!("ASCII Zoo per ora funziona su Windows, macOS e Linux");
 
 fn main() {
+    shared::segna_avvio();
     // "ascii-zoo --version" scrive la versione ed esce: linux/install.sh lo usa per
     // controllare che il programma scaricato parta su quel sistema, librerie comprese
     if std::env::args().nth(1).as_deref() == Some("--version") {

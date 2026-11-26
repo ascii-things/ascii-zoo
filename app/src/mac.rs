@@ -219,6 +219,7 @@ impl App {
         let ac = power::on_ac();
         self.last_ac = Some(ac);
         for s in &mut self.screens {
+            shared::log_pagina_pronta(&s.webview, &s.id);
             for code in self.core.js_tutto(ac && power::ha_batteria(), &s.id) {
                 let _ = s.webview.evaluate_script(&code);
             }
@@ -364,7 +365,12 @@ impl App {
         if !same {
             self.screens.clear();
             self.screens =
-                now.into_iter().filter_map(|(pos, size, sc)| make_screen(target, proxy, pos, size, sc.id)).collect();
+                now.into_iter()
+                    .filter_map(|(pos, size, sc)| {
+                        let iniziale = self.core.script_iniziale(&sc.id);
+                        make_screen(target, proxy, pos, size, sc.id, &iniziale)
+                    })
+                    .collect();
             for s in &self.screens {
                 zoo_log!("schermo {}: {}×{} a {},{}", s.id, s.size.width, s.size.height, s.pos.x, s.pos.y);
             }
@@ -414,6 +420,7 @@ fn make_screen(
     pos: PhysicalPosition<i32>,
     size: PhysicalSize<u32>,
     id: String,
+    iniziale: &str,
 ) -> Option<Screen> {
     let window = WindowBuilder::new()
         .with_title("ASCII Zoo")
@@ -432,6 +439,7 @@ fn make_screen(
         .with_navigation_handler(shared::navigazione_permessa)
         .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
         .with_url(URL)
+        .with_initialization_script(iniziale)
         .with_background_color((9, 10, 15, 255))
         .with_devtools(false)
         .with_on_page_load_handler(move |ev, _url| {
@@ -442,6 +450,7 @@ fn make_screen(
         .build(&window)
         .ok()?;
     window.set_visible(true);
+    zoo_log!("avvio: schermo {id}: finestra e WebView pronte a {} ms dall'avvio", shared::ms_dall_avvio());
     Some(Screen { webview, window, pos, size, id, paused: false, visto: false, margini: None })
 }
 

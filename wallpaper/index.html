@@ -303,6 +303,10 @@ h1 {
 (function (global) {
   'use strict';
 
+  // tempi dell'avvio (ms dall'inizio della pagina), per il log del programma: vedi Zoo.TEMPI
+  var ora = function () { return global.performance ? global.performance.now() : 0; };
+  var TEMPI = { motore: Math.round(ora()), atlanti: 0, atlante_ms: 0 };
+
   var TAU = Math.PI * 2;
   var FLOW = -Math.PI / 4; // direzione "di corrente": in alto a destra
   var RAMP_A = '.,:-~;=+*oxX%#&@';
@@ -3455,6 +3459,7 @@ h1 {
   }
 
   Zoo.SPECIES = SPECIES;
+  Zoo.TEMPI = TEMPI;
 
   Zoo.prototype.rnd = function () {
     // mulberry32
@@ -3521,10 +3526,38 @@ h1 {
     return this.cell;
   };
 
+  // L'atlante dei caratteri (un riquadro per colore, carattere e intensità) va rifatto: lo si
+  // rifà una volta sola, al prossimo fotogramma, anche se lo si chiede più volte (all'avvio lo
+  // chiedevano la misura della finestra, il font, il tema: quattro atlanti, quasi un secondo)
   Zoo.prototype.buildAtlas = function () {
-    var tile = this.tile, a = document.createElement('canvas');
+    this.atlasSporco = true;
+  };
+
+  // I colori che servono adesso: quelli comuni (onda, cibo, cifre, segmenti spenti) e quelli
+  // di ogni specie che si vede (l'animale di adesso, quello che sta sparendo, la scenografia
+  // che sfuma). I colori di una specie vanno da c0 a cd, il pallino, uno dopo l'altro.
+  Zoo.prototype.coloriInUso = function () {
+    var usa = new Uint8Array(PALETTE.length), specie = [this.species, this.sceneSp], i, k;
+    for (i = 0; i < 4; i++) usa[i] = 1;
+    for (i = 0; i < this.creatures.length; i++) specie.push(this.creatures[i].kind);
+    for (k = 0; k < specie.length; k++) {
+      var sp = specie[k];
+      if (!sp || usa[sp.cd]) continue;
+      for (i = sp.c0; i <= sp.cd; i++) usa[i] = 1;
+    }
+    return usa;
+  };
+
+  // L'atlante con solo i colori in uso (this.riga: colore della tavolozza → riga dell'atlante,
+  // -1 se non c'è): una quarantina di righe invece di tutte le specie (più di 200), sei volte
+  // più veloce da fare e da copiare. Cambiando sfondo si rifà con quelle del nuovo.
+  Zoo.prototype.faiAtlante = function () {
+    var t0 = ora(), tile = this.tile, usa = this.coloriInUso(), n = 0, ci;
+    var riga = this.riga && this.riga.length === PALETTE.length ? this.riga : (this.riga = new Int16Array(PALETTE.length));
+    for (ci = 0; ci < PALETTE.length; ci++) riga[ci] = usa[ci] ? n++ : -1;
+    var a = document.createElement('canvas');
     a.width = LEVELS * 2 * tile;
-    a.height = PALETTE.length * tile;
+    a.height = n * tile;
     var g = a.getContext('2d');
     var gap = Math.max(1, Math.round(tile * 0.07));
     g.font = '500 ' + Math.round(tile * 0.95) + 'px ' + this.font;
@@ -3532,14 +3565,15 @@ h1 {
     g.textBaseline = 'middle';
     // scuro: carattere più chiaro del suo riquadro; chiaro: carattere più scuro, riquadro più leggero
     var to = this.chiaro ? 16 : 255, mix = this.chiaro ? 0.32 : 0.34, tf = this.chiaro ? 0.5 : 1;
-    for (var ci = 0; ci < PALETTE.length; ci++) {
+    for (ci = 0; ci < PALETTE.length; ci++) {
+      if (riga[ci] < 0) continue;
       var rgb = this.rgb[ci];
       var bright = 'rgb(' + Math.round(lerp(rgb[0], to, mix)) + ',' +
         Math.round(lerp(rgb[1], to, mix)) + ',' + Math.round(lerp(rgb[2], to, mix)) + ')';
       for (var r = 0; r < 2; r++) {
         var ramp = r ? RAMP_B : RAMP_A;
         for (var l = 0; l < LEVELS; l++) {
-          var x = (r * LEVELS + l) * tile, y = ci * tile;
+          var x = (r * LEVELS + l) * tile, y = riga[ci] * tile;
           var fill = (0.07 + 0.68 * Math.pow(l / (LEVELS - 1), 1.4)) * tf;
           g.fillStyle = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + fill.toFixed(3) + ')';
           g.fillRect(x + gap, y + gap, tile - gap * 2, tile - gap * 2);
@@ -3549,6 +3583,9 @@ h1 {
       }
     }
     this.atlas = a;
+    this.atlasSporco = false;
+    // fatto con il font vero? (se no, quando arriva l'atlante si rifà: vedi la pagina)
+    this.atlasFont = !!(document.fonts && document.fonts.check && document.fonts.check(g.font));
     // Per disegnare si usa una copia dell'atlante come immagine (un PNG decodificato), non il
     // canvas: in WebKitGTK disegnare da un canvas accelerato crea, aspetta e distrugge un
     // fence della GPU a ogni drawImage (un migliaio a fotogramma, circa un quarto della CPU
@@ -3565,6 +3602,7 @@ h1 {
     };
     img.src = a.toDataURL('image/png');
     this.invalidate(); // caratteri nuovi (es. il font è arrivato): si ridisegna tutto
+    TEMPI.atlanti++; TEMPI.atlante_ms += Math.round(ora() - t0); TEMPI.righe = n;
   };
 
   // Tema chiaro o scuro: i colori sono "cotti" nell'atlante dei caratteri, che si rifà.
@@ -3638,6 +3676,16 @@ h1 {
     this.species = sp;
     this.populate(false);
     return true;
+  };
+
+  // All'avvio: niente dissolvenza (animali e scenografia ci mettono più di un secondo a
+  // comparire), il primo sfondo è già tutto lì. Chi era già sparito o stava sparendo (un
+  // altro sfondo scelto prima di partire) se ne va subito.
+  Zoo.prototype.subito = function () {
+    this.creatures = this.creatures.filter(function (c) { return !c.dying; });
+    this.creatures.forEach(function (c) { c.a = 1; });
+    this.sceneSp = this.species && this.species.under ? this.species : null;
+    this.sceneA = this.sceneSp ? 1 : 0;
   };
 
   Zoo.prototype.ripple = function (x, y, r, life, color) {
@@ -3826,7 +3874,9 @@ h1 {
 
   Zoo.prototype.render = function () {
     var ctx = this.ctx, tile = this.tile, cols = this.cols, i, k;
-    this.frameNo++;
+    if (++this.frameNo === 1) TEMPI.primo = Math.round(ora());
+    // un atlante da rifare, o uno sfondo nuovo i cui colori non ci sono ancora
+    if (this.atlasSporco || !this.riga || (this.species && this.riga[this.species.cd] < 0)) this.faiAtlante();
     this.nt = 0;
     var scn = this.sceneA > 0 ? this.sceneSp : null, sd = scn ? this.sceneData(scn) : null;
     if (scn) scn.under(this, this.t, this.sceneA, sd);
@@ -3853,7 +3903,7 @@ h1 {
     // (chiave = colore, carattere, trasparenza) e si cancellano quelle che si sono
     // spente: di solito ne cambia una piccola parte.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    var shown = this.shown, stamp = this.stamp, fn = this.frameNo, atlas = this.atlas;
+    var shown = this.shown, stamp = this.stamp, fn = this.frameNo, atlas = this.atlas, riga = this.riga;
     // il bagliore è sfocato: basta aggiornarlo un fotogramma sì e uno no
     var gd = this.gimg && (fn & 1) === 0 ? this.gimg.data : null;
     if (gd) gd.fill(0);
@@ -3870,12 +3920,17 @@ h1 {
       var aq = Math.round((al > 1 ? 1 : al < 0 ? 0 : al) * 255);
       var key = ((col * 2 + alt) * LEVELS + lvl) * 256 + aq;
       if (key !== shown[k]) {
-        if (shown[k] !== -1) ctx.clearRect(ci2 * tile, cj2 * tile, tile, tile);
-        if (aq > 0) {
-          if (aq !== lastA) { ctx.globalAlpha = aq / 255; lastA = aq; }
-          ctx.drawImage(atlas, (alt * LEVELS + lvl) * tile, col * tile, tile, tile, ci2 * tile, cj2 * tile, tile, tile);
+        // un colore che non è nell'atlante (non dovrebbe capitare): l'atlante si rifà al
+        // prossimo fotogramma, con anche lui, e intanto la cella resta com'era
+        if (riga[col] < 0) this.atlasSporco = true;
+        else {
+          if (shown[k] !== -1) ctx.clearRect(ci2 * tile, cj2 * tile, tile, tile);
+          if (aq > 0) {
+            if (aq !== lastA) { ctx.globalAlpha = aq / 255; lastA = aq; }
+            ctx.drawImage(atlas, (alt * LEVELS + lvl) * tile, riga[col] * tile, tile, tile, ci2 * tile, cj2 * tile, tile, tile);
+          }
+          shown[k] = key;
         }
-        shown[k] = key;
       }
       if (gd) {
         var rgb = this.grgb[col], p = k * 4;
@@ -4333,7 +4388,8 @@ h1 {
   }
   fit();
   if (document.fonts && document.fonts.load) {
-    document.fonts.load('500 12px "IBM Plex Mono"').then(function () { zoo.buildAtlas(); }, function () {});
+    // il font è nella pagina e di solito c'è già al primo atlante: lo si rifà solo se mancava
+    document.fonts.load('500 12px "IBM Plex Mono"').then(function () { if (!zoo.atlasFont) zoo.buildAtlas(); }, function () {});
   }
   var resizeTimer = 0;
   window.addEventListener('resize', function () {
@@ -4988,6 +5044,14 @@ h1 {
     impostaStats(finte(18));
   }
 
+  // nel programma: le impostazioni di questo schermo, messe prima della pagina
+  // (shared::script_iniziale), valgono già dal primo fotogramma
+  if (typeof window.ZOO_INIZIO === 'function') {
+    try { window.ZOO_INIZIO(); } catch (e) { /* arrivano comunque a pagina caricata */ }
+  }
+  // il primo sfondo c'è già al primo fotogramma, senza la dissolvenza dei cambi
+  zoo.subito();
+  Zoo.TEMPI.start = Math.round(performance.now());
   zoo.start();
   window.asciiZoo = zoo;
   if (wallpaper) return;

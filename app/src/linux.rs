@@ -219,7 +219,98 @@ fn modo_wayland(bus: Option<&gio::DBusConnection>) -> Option<Vec<StatoSchermo>> 
     if std::env::var("GDK_BACKEND").is_ok_and(|b| b != "wayland") || std::env::var("ASCII_ZOO_SFONDO").is_ok_and(|v| v == "x11") {
         return None;
     }
-    chiedi_stato(bus?)
+    let bus = bus?;
+    if let Some(stato) = chiedi_stato(bus) {
+        return Some(stato);
+    }
+    // All'accesso ASCII Zoo può partire prima che GNOME Shell abbia caricato le estensioni. Se
+    // la nostra è accesa la si aspetta: partire su X11 e ripartire appena risponde voleva dire
+    // due avvii di WebKit e lo sfondo che spariva e ricompariva. Non oltre ATTESA_ALL_ACCESSO,
+    // e si smette subito se GNOME dice che non può partire (errore, GNOME di un'altra versione).
+    if !gnome() || !estensione_accesa() {
+        return None;
+    }
+    let inizio = Instant::now();
+    let mut visto = None;
+    while inizio.elapsed() < ATTESA_ALL_ACCESSO {
+        std::thread::sleep(Duration::from_millis(100));
+        if let Some(stato) = chiedi_stato(bus) {
+            zoo_log!("sfondo: l'estensione di GNOME ha risposto dopo {} ms di attesa", inizio.elapsed().as_millis());
+            return Some(stato);
+        }
+        let st = stato_estensione(bus);
+        if st != visto {
+            zoo_log!("sfondo: aspetto l'estensione di GNOME, stato {st:?} dopo {} ms", inizio.elapsed().as_millis());
+            visto = st;
+        }
+        // 3 (errore) è anche lo stato di un'estensione che GNOME sta ancora caricando: conta solo
+        // se GNOME ha registrato degli errori; 4 = fatta per un'altra versione di GNOME
+        if st == Some(4.0) || (st == Some(3.0) && errori_estensione(bus) > 0) {
+            zoo_log!("sfondo: GNOME non può accendere l'estensione (stato {st:?})");
+            break;
+        }
+    }
+    None
+}
+
+/// quanto aspettare all'avvio un'estensione accesa che non risponde ancora (vedi modo_wayland)
+const ATTESA_ALL_ACCESSO: Duration = Duration::from_secs(10);
+
+/// la sessione è di GNOME (XDG_CURRENT_DESKTOP, es. "ubuntu:GNOME")
+fn gnome() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d.split(':').any(|x| x.eq_ignore_ascii_case("gnome")))
+}
+
+/// L'estensione è tra quelle accese nelle impostazioni di GNOME (e le estensioni dell'utente
+/// non sono spente del tutto): se non risponde è perché GNOME Shell non l'ha ancora caricata
+fn estensione_accesa() -> bool {
+    let Some(schema) = gio::SettingsSchemaSource::default().and_then(|s| s.lookup("org.gnome.shell", true)) else {
+        return false;
+    };
+    if !schema.has_key("enabled-extensions") {
+        return false;
+    }
+    let s = gio::Settings::new_full(&schema, None::<&gio::SettingsBackend>, None);
+    let spente = schema.has_key("disable-user-extensions") && s.boolean("disable-user-extensions");
+    !spente && s.strv("enabled-extensions").iter().any(|u| u.as_str() == ESTENSIONE)
+}
+
+/// quanti errori GNOME Shell ha registrato per l'estensione (0 anche se non risponde)
+fn errori_estensione(bus: &gio::DBusConnection) -> usize {
+    bus.call_sync(
+        Some("org.gnome.Shell"),
+        "/org/gnome/Shell",
+        "org.gnome.Shell.Extensions",
+        "GetExtensionErrors",
+        Some(&(ESTENSIONE,).to_variant()),
+        glib::VariantTy::new("(as)").ok(),
+        gio::DBusCallFlags::NO_AUTO_START,
+        1000,
+        gio::Cancellable::NONE,
+    )
+    .ok()
+    .and_then(|v| v.get::<(Vec<String>,)>())
+    .map_or(0, |(e,)| e.len())
+}
+
+/// Lo stato dell'estensione secondo GNOME Shell (1 accesa, 3 errore, 4 per un'altra versione
+/// di GNOME, 6 caricata…); None se Shell non risponde o non la conosce ancora
+fn stato_estensione(bus: &gio::DBusConnection) -> Option<f64> {
+    let v = bus
+        .call_sync(
+            Some("org.gnome.Shell"),
+            "/org/gnome/Shell",
+            "org.gnome.Shell.Extensions",
+            "GetExtensionInfo",
+            Some(&(ESTENSIONE,).to_variant()),
+            Some(glib::VariantTy::new("(a{sv})").ok()?),
+            gio::DBusCallFlags::NO_AUTO_START,
+            1000,
+            gio::Cancellable::NONE,
+        )
+        .ok()?;
+    let (info,) = v.get::<(std::collections::HashMap<String, glib::Variant>,)>()?;
+    info.get("state")?.get::<f64>()
 }
 
 /// Modo Wayland senza l'estensione (spenta, o non prende le finestre): si riparte su X11,
@@ -231,7 +322,7 @@ fn modo_wayland(bus: Option<&gio::DBusConnection>) -> Option<Vec<StatoSchermo>> 
 /// mette quando torna su X11 perché l'estensione non va): niente giri avanti e indietro.
 fn riparti_su_wayland() {
     use std::os::unix::process::CommandExt;
-    zoo_log!("sfondo: l'estensione di GNOME ora risponde: riparto senza XWayland");
+    zoo_log!("sfondo: l'estensione di GNOME ora risponde ({} ms dall'avvio): riparto senza XWayland", shared::ms_dall_avvio());
     let exe = std::env::current_exe().ok().filter(|p| p.exists()).unwrap_or_else(|| "/proc/self/exe".into());
     let errore = std::process::Command::new(exe).args(std::env::args_os().skip(1)).env_remove("GDK_BACKEND").exec();
     eprintln!("ascii-zoo: non riesco a ripartire: {errore}");
@@ -528,6 +619,7 @@ impl App {
         let ac = power::on_ac();
         self.last_ac = Some(ac);
         for s in &mut self.screens {
+            shared::log_pagina_pronta(&s.webview, &s.id);
             for code in self.core.js_tutto(ac && power::ha_batteria(), &s.id) {
                 let _ = s.webview.evaluate_script(&code);
             }
@@ -838,7 +930,10 @@ impl App {
             self.screens.clear();
             self.screens = now
                 .into_iter()
-                .filter_map(|(pos, size, scala, sc)| make_screen(target, proxy, pos, size, scala, sc.id, self.wayland))
+                .filter_map(|(pos, size, scala, sc)| {
+                    let iniziale = self.core.script_iniziale(&sc.id);
+                    make_screen(target, proxy, pos, size, scala, sc.id, self.wayland, &iniziale)
+                })
                 .collect();
             for s in &self.screens {
                 zoo_log!("schermo {}: {}×{} a {},{}, scala {}", s.id, s.size.width, s.size.height, s.pos.x, s.pos.y, s.scala);
@@ -904,6 +999,7 @@ fn make_screen(
     scala: f64,
     id: String,
     wayland: bool,
+    iniziale: &str,
 ) -> Option<Screen> {
     let logico = logico(pos, size, scala);
     // modo Wayland: il titolo dice all'estensione di GNOME che è lo sfondo e di quale
@@ -947,6 +1043,7 @@ fn make_screen(
         .with_navigation_handler(shared::navigazione_permessa)
         .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
         .with_url(URL)
+        .with_initialization_script(iniziale)
         .with_background_color((9, 10, 15, 255))
         .with_devtools(false)
         .with_on_page_load_handler(move |ev, _url| {
@@ -957,6 +1054,7 @@ fn make_screen(
         .build_gtk(window.default_vbox()?)
         .ok()?;
     window.set_visible(true);
+    zoo_log!("avvio: schermo {id}: finestra e WebView pronte a {} ms dall'avvio", shared::ms_dall_avvio());
     // trasparente ai clic: vanno alle icone del desktop o a quello che c'è sotto
     gw.input_shape_combine_region(Some(&gtk::cairo::Region::create()));
     if let Some(w) = gw.window().filter(|_| !wayland) {
@@ -1057,7 +1155,7 @@ pub fn run() {
         && std::env::var_os("WAYLAND_DISPLAY").is_some()
         && std::env::var_os("GDK_BACKEND").is_none()
         && std::env::var_os("ASCII_ZOO_SFONDO").is_none()
-        && std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d.split(':').any(|x| x.eq_ignore_ascii_case("gnome")));
+        && gnome();
     if wayland {
         std::env::set_var("GDK_BACKEND", "wayland");
         zoo_log!("sfondo: Wayland, al posto dello sfondo lo mette l'estensione di GNOME");

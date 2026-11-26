@@ -244,6 +244,16 @@ pub fn log_attivo() -> bool {
     *ATTIVO.get_or_init(|| std::env::var_os("ASCII_ZOO_LOG").is_some_and(|v| !v.is_empty() && v != "0"))
 }
 
+/// quando è partito il programma (main): per i tempi dell'avvio nel log
+static AVVIO: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+pub fn segna_avvio() {
+    AVVIO.get_or_init(std::time::Instant::now);
+}
+/// millisecondi dall'avvio del programma
+pub fn ms_dall_avvio() -> u128 {
+    AVVIO.get_or_init(std::time::Instant::now).elapsed().as_millis()
+}
+
 /// una riga di log, solo con ASCII_ZOO_LOG=1
 macro_rules! zoo_log {
     ($($a:tt)*) => {
@@ -253,6 +263,32 @@ macro_rules! zoo_log {
     };
 }
 pub(crate) use zoo_log;
+
+/// Nel log (solo con ASCII_ZOO_LOG=1), a pagina caricata: quanti fotogrammi ha già disegnato
+/// e da quanti millisecondi c'è la pagina, per vedere quanto ci mette lo sfondo a comparire
+pub fn log_pagina_pronta(webview: &wry::WebView, schermo: &str) {
+    if !log_attivo() {
+        return;
+    }
+    let schermo = schermo.to_string();
+    let quando = ms_dall_avvio();
+    let _ = webview.evaluate_script_with_callback(
+        "(function () { try { return [asciiZoo.frameNo, Math.round(performance.now()), asciiZoo.species.id, \
+         asciiZoo.chiaro ? 'chiaro' : 'scuro', JSON.stringify(AsciiZoo.TEMPI)].join(' '); } catch (e) { return '?'; } })()",
+        move |r| {
+            let r = r.trim_matches('"').to_string();
+            let mut p = r.split(' ');
+            match (p.next(), p.next(), p.next(), p.next(), p.next()) {
+                (Some(f), Some(t), Some(sfondo), Some(tema), tempi) => zoo_log!(
+                    "avvio: schermo {schermo}: pagina caricata a {quando} ms dall'avvio; la pagina c'è da {t} ms, ha già \
+                     disegnato {f} fotogrammi, mostra {sfondo}, tema {tema}; tempi nella pagina {}",
+                    tempi.unwrap_or("?").replace("\\\"", "")
+                ),
+                _ => zoo_log!("avvio: schermo {schermo}: pagina caricata a {quando} ms dall'avvio ({r})"),
+            }
+        },
+    );
+}
 
 pub const JS_STOP: &str = "window.asciiZoo && window.asciiZoo.stop()";
 pub const JS_START: &str = "window.asciiZoo && window.asciiZoo.start()";
@@ -679,6 +715,23 @@ impl Core {
 
     /// tutte le impostazioni di uno schermo, da mandare quando la sua pagina ha finito di caricare
     /// (`in_carica`: vedi js_in_carica)
+    /// Le impostazioni di uno schermo come script che la WebView esegue prima della pagina
+    /// (`with_initialization_script`): la pagina le applica prima del primo fotogramma
+    /// (ZOO_INIZIO), così lo sfondo compare già con il tema, lo sfondo scelto, l'orologio e i
+    /// widget giusti, invece di partire con quelli di serie e cambiarli appena caricato. Le
+    /// stesse impostazioni arrivano comunque a pagina caricata (push_settings).
+    pub fn script_iniziale(&self, schermo: &str) -> String {
+        let in_carica = crate::power::on_ac() && crate::power::ha_batteria();
+        let mut s = String::from("window.ZOO_INIZIO = function () {\n");
+        for c in self.js_tutto(in_carica, schermo) {
+            s.push_str("  try { ");
+            s.push_str(&c);
+            s.push_str("; } catch (e) {}\n");
+        }
+        s.push_str("};\n");
+        s
+    }
+
     pub fn js_tutto(&self, in_carica: bool, schermo: &str) -> Vec<String> {
         let mut v = vec![
             self.js_tema(),
