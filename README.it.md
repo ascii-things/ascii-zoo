@@ -15,10 +15,10 @@
 
 ## Gli animali
 
-Nove specie, una alla volta, ognuna con il suo ambiente (e sei [paesaggi](#i-paesaggi) senza animali). Di serie lo sfondo passa al successivo ogni 2 minuti, paesaggi compresi; dal menu del programma (**Rotazione**) si sceglie ogni quanto (da 30 secondi a un'ora) e quali animali far girare, oppure la si spegne: **Spenta** tiene lo sfondo che si vede in quel momento (lo stesso che sceglierlo in **Sfondo**). Quando il PC è in carica restano le koi nel loro stagno (si può disattivare).
+Undici specie, una alla volta, ognuna con il suo ambiente (e sei [paesaggi](#i-paesaggi) senza animali). Di serie lo sfondo passa al successivo ogni 2 minuti, paesaggi compresi; dal menu del programma (**Rotazione**) si sceglie ogni quanto (da 30 secondi a un'ora) e quali animali far girare, oppure la si spegne: **Spenta** tiene lo sfondo che si vede in quel momento (lo stesso che sceglierlo in **Sfondo**). Quando il PC è in carica restano le koi nel loro stagno (si può disattivare).
 
 <p align="center">
-  <img src="docs/animals.png" alt="Le nove specie, ognuna nel suo ambiente: farfalle sul prato fiorito, meduse tra le bolle, libellule sulle canne, koi nello stagno, rane nel prato con sassi e lucciole, aironi con i nidi, cavalli nella prateria, anatre con gli anatroccoli nello stagno, granchi sulla sabbia; più l'orologio" width="100%">
+  <img src="docs/animals.png" alt="Le undici specie, ognuna nel suo ambiente: farfalle sul prato fiorito, meduse tra le bolle, libellule sulle canne, koi nello stagno, rane nel prato con sassi e lucciole, aironi con i nidi, granchi sulla sabbia, cavalli nella prateria, anatre con gli anatroccoli nello stagno, gatti nel salotto, topi nella dispensa intorno a un pezzo di formaggio; più l'orologio" width="100%">
 </p>
 
 | Specie | Come si muove | L'ambiente | Con l'orologio |
@@ -32,6 +32,8 @@ Nove specie, una alla volta, ognuna con il suo ambiente (e sei [paesaggi](#i-pae
 | **Granchi** | camminano di lato | sabbia con le increspature e le conchiglie, sassi da aggirare, impronte che il tempo cancella | invertono il passo quando ci arrivano contro |
 | **Cavalli** | di profilo, in branco: pascolano, vanno al passo e al trotto; al clic scappano al galoppo alzando la polvere | prateria con l'erba piegata dalle raffiche di vento, fiori di campo, una staccionata in basso | lo aggirano o tornano indietro; allo scatto del minuto quelli vicini partono al galoppo |
 | **Anatre** | la mamma nuota a zonzo con gli anatroccoli in fila dietro, ogni tanto mette la testa sott'acqua; qualche maschio da solo | stagno con la riva, le canne e le pannocchie, ninfee che si scostano al passaggio, la scia a V; al clic arriva il pane | ci girano intorno; allo scatto del minuto la mamma scappa e i piccoli le corrono dietro |
+| **Gatti** | camminano piano, si siedono a lavarsi e a guardarsi intorno con la coda che batte, ogni tanto uno fa una corsa pazza o va a dare una zampata al gomitolo; dormono acciambellati sui cuscini | salotto visto dall'alto: parquet, un tappeto ovale intrecciato, cuscini, gomitoli che rotolano e lasciano il filo, le tane dei topi nei muri; al clic arriva un topo: i gatti vicini lo rincorrono, lo prendono, ci giocano un po' e lo lasciano andare, finché non trova una tana (se passa vicino a un gatto che dorme, lo sveglia) | ci girano intorno; allo scatto del minuto quelli vicini fanno un balzo |
+| **Topi** | corrono a scatti e si fermano ad annusare; vanno a rosicchiare i chicchi caduti | dispensa vista dall'alto: lastre di pietra, sacchi di grano (uno aperto, con la scia di chicchi) e casse da aggirare, una ragnatela in un angolo; al clic arriva uno spicchio di formaggio coi buchi: i topi vicini corrono a mangiarlo tutti intorno, a morsi, e restano le briciole | ci girano intorno; allo scatto del minuto scappano |
 
 Ogni animale è una forma calcolata cella per cella: ogni cella accesa diventa un carattere (`. : - = + * o x X % # & @`), più denso dove il corpo è più pieno, con un leggero bagliore.
 
@@ -195,7 +197,7 @@ La cartella `app/` contiene un programma che mette lo sfondo dietro le icone su 
 - **Tema**: scuro, chiaro oppure come il sistema (vedi [Tema chiaro e scuro](#tema-chiaro-e-scuro));
 - **Salva una foto dello sfondo**: un PNG per schermo nella cartella Immagini (vedi [Foto dello sfondo](#foto-dello-sfondo));
 - **Orologio al centro**: togliendo la spunta l'orologio sparisce e lo schermo è tutto per gli animali;
-- **Clic sul desktop agli animali**: un clic in una zona vuota del desktop dà da mangiare alle koi e alle anatre o fa scappare gli altri animali, come nel browser;
+- **Clic sul desktop agli animali**: un clic in una zona vuota del desktop dà da mangiare alle koi e alle anatre, fa uscire un topo per i gatti, dà il formaggio ai topi o fa scappare gli altri animali, come nel browser;
 - le pause (a batteria, con app a schermo intero, quando le finestre coprono il desktop; le stesse voci anche su macOS e Linux), l'avvio con Windows;
 - **Screensaver**: la scena (stelle, pioggia e lampi, falò, aurora, gioco della vita, mare di notte, oppure tutte una dopo l'altra), **Prova adesso** e **Attiva come screensaver di Windows…**, che apre le impostazioni dello screensaver di Windows con ASCII Zoo già scelto (lì decidi dopo quanto parte). Lo screensaver è lo stesso exe, copiato come `%LOCALAPPDATA%\AsciiZoo\ascii-zoo.scr`, con un motore nativo senza WebView (cartella [`dreams/`](dreams/)).
 
@@ -243,7 +245,7 @@ Apri `wallpaper/index.html` in un browser qualsiasi. Aggiungendo il nome di una 
 index.html#koi      index.html#meduse      index.html#granchi
 ```
 
-Nel browser un clic sullo sfondo fa disperdere gli animali; con le koi e le anatre invece fa cadere del cibo.
+Nel browser un clic sullo sfondo fa disperdere gli animali; con le koi e le anatre invece fa cadere del cibo, con i gatti arriva un topo e con i topi un pezzo di formaggio.
 
 ### Note
 
@@ -258,7 +260,7 @@ Lo stesso programma esiste per macOS 11 o successivo, su Mac con Apple Silicon e
 - Lo sfondo copre ogni schermo sopra l'immagine del desktop e sotto le icone del Finder, in tutti gli Spazi. Il menu è l'icona a forma di koi nella **barra dei menu**, con le stesse voci della versione Windows (al posto di "Avvia con Windows" c'è **Apri al login**).
 - **Pause.** Lo sfondo si ferma a batteria e, schermo per schermo, quando non si vede: finestre che coprono tutto il desktop, un'app a schermo intero, schermo bloccato o spento. Lo dice macOS stesso (lo stato di occlusione della finestra), senza controlli a parte; riparte entro mezzo secondo da quando torna visibile. Come su Windows, nel menu ci sono le voci **Pausa con app a schermo intero** e **Pausa quando le finestre coprono il desktop**, che si possono spegnere una per una.
 - **Barra dei menu e Dock.** I widget restano fuori dalla barra dei menu e dal Dock, anche se lo sposti o lo nascondi.
-- **Clic sul desktop.** Un clic sul desktop, anche sulle icone del Finder, dà da mangiare alle koi e alle anatre o fa scappare gli altri animali. Usa un monitor globale dei clic di macOS (`NSEvent`): vede solo dove si preme il tasto sinistro nelle altre app, non blocca né cambia il clic, non registra niente e non chiede il permesso Accessibilità (serve solo per i tasti). Il clic vale solo se nel punto non c'è nessuna finestra, il Dock o la barra dei menu. Si spegne togliendo la spunta a **Clic sul desktop agli animali**.
+- **Clic sul desktop.** Un clic sul desktop, anche sulle icone del Finder, dà da mangiare alle koi e alle anatre, fa uscire un topo per i gatti, dà il formaggio ai topi o fa scappare gli altri animali. Usa un monitor globale dei clic di macOS (`NSEvent`): vede solo dove si preme il tasto sinistro nelle altre app, non blocca né cambia il clic, non registra niente e non chiede il permesso Accessibilità (serve solo per i tasti). Il clic vale solo se nel punto non c'è nessuna finestra, il Dock o la barra dei menu. Si spegne togliendo la spunta a **Clic sul desktop agli animali**.
 - **In riproduzione.** Il widget, spento di serie, chiede a Musica e Spotify cosa suonano (solo se sono aperti): la prima volta macOS chiede il permesso **Automazione** (vedi [I widget](#i-widget)). Dato che l'app non è firmata con un certificato Apple, dopo un aggiornamento macOS può chiederlo di nuovo.
 - **Screensaver.** Le sei scene dello screensaver di Windows (stelle, pioggia, falò, aurora, gioco della vita, mare di notte) ci sono anche qui, come modulo di macOS. Nel menu **Screensaver** scegli la scena (o tutte, una dopo l'altra), **Prova adesso** lo mostra subito a tutto schermo (si chiude toccando mouse o tastiera) e **Attiva come screensaver di macOS…** copia `ASCII Zoo.saver` in `~/Library/Screen Savers` e apre le impostazioni del salvaschermo (su macOS 26 sono dentro **Sfondo**), dove scegli **ASCII Zoo** e dopo quanto parte. macOS fa girare i salvaschermo in una sandbox: il modulo prova a leggere la scena scelta da `~/Library/Application Support/AsciiZoo/screensaver.json`, dove la scrive l'app, e di solito la sandbox lo lascia fare; se non può, le scene girano tutte a rotazione. **Prova adesso** è lo stesso modulo, caricato dall'app, e mostra sempre la scena scelta. Dopo un aggiornamento dell'app, al primo avvio si aggiorna anche il modulo, se è installato. Da macOS 14 il processo dei salvaschermo di macOS può restare acceso anche dopo: quando il salvaschermo finisce, il modulo lo chiude.
 - **"Impossibile aprire l'app".** L'app non è firmata con un certificato Apple, quindi al primo avvio macOS la blocca: apri **Impostazioni di Sistema → Privacy e sicurezza** e premi **Apri comunque**, poi conferma.

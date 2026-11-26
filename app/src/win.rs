@@ -39,7 +39,7 @@ use windows::Win32::UI::HiDpi::{
     GetDpiForMonitor, SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, MDT_EFFECTIVE_DPI,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
-use wry::{PageLoadEvent, WebView, WebViewBuilder};
+use wry::{PageLoadEvent, WebContext, WebView, WebViewBuilder};
 
 use crate::config::autostart;
 use crate::shared::{self, zoo_log, Core, Esito, Schermo, JS_START, JS_STOP, URL};
@@ -393,8 +393,15 @@ unsafe fn make_screen(hinst: HINSTANCE, rect: RECT, id: String, iniziale: &str) 
         return None;
     };
     desktop::fit(hwnd, embed.parent, rect);
+    zoo_log!("avvio: schermo {id}: finestra pronta a {} ms dall'avvio, ora la WebView", shared::ms_dall_avvio());
 
-    let built = WebViewBuilder::new()
+    // Il profilo della WebView2 sempre nello stesso posto, %LOCALAPPDATA%\AsciiZoo\WebView2: di
+    // serie starebbe accanto all'exe, che non si installa, e ogni versione nuova (scaricata in
+    // un'altra cartella) ripartiva da un profilo vuoto, da creare, più lenta a partire; con
+    // l'exe in una cartella di sola lettura la WebView non partiva proprio. Il contesto serve
+    // solo a crearla.
+    let mut contesto = WebContext::new(profilo_webview());
+    let built = WebViewBuilder::new_with_web_context(&mut contesto)
         .with_custom_protocol("zoo".into(), |_id, _req| shared::pagina())
         .with_navigation_handler(shared::navigazione_permessa)
         .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
@@ -422,6 +429,13 @@ unsafe fn make_screen(hinst: HINSTANCE, rect: RECT, id: String, iniziale: &str) 
 
 /// gli sfondi, con le impostazioni di ogni schermo già nella pagina dal primo fotogramma (il
 /// Core deve già conoscere gli schermi: set_schermi prima)
+/// %LOCALAPPDATA%\AsciiZoo\WebView2 (None se non si sa dov'è: allora accanto all'exe)
+fn profilo_webview() -> Option<std::path::PathBuf> {
+    let dir = std::path::PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("AsciiZoo").join("WebView2");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
+}
+
 fn make_screens(hinst: HINSTANCE, mons: &[(RECT, Schermo)], core: &Core) -> Vec<Screen> {
     mons.iter().filter_map(|(r, s)| unsafe { make_screen(hinst, *r, s.id.clone(), &core.script_iniziale(&s.id)) }).collect()
 }
@@ -593,8 +607,10 @@ pub fn run() {
         }
         // "Avvia con Windows" segue la copia appena avviata
         autostart::aggiorna();
-        // e anche lo screensaver, se è installato: dopo un aggiornamento dell'app è la versione nuova
-        ascii_dreams::aggiorna_se_installato();
+        // e anche lo screensaver, se è installato: dopo un aggiornamento dell'app è la versione
+        // nuova. In un thread a parte: legge per intero due eseguibili per confrontarli, e
+        // all'accesso il disco è lento (lo sfondo non lo deve aspettare)
+        std::thread::spawn(ascii_dreams::aggiorna_se_installato);
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
 
@@ -638,6 +654,7 @@ pub fn run() {
         let mons = monitors();
         let (mut core, menu) = Core::new(true);
         core.set_schermi(mons.iter().map(|m| m.1.clone()).collect());
+        zoo_log!("avvio: impostazioni e menu pronti a {} ms dall'avvio", shared::ms_dall_avvio());
         let screens = make_screens(hinst, &mons, &core);
         if screens.is_empty() {
             MessageBoxW(None, w!("Non riesco a trovare il desktop di Windows."), w!("ASCII Zoo"), MB_ICONERROR);

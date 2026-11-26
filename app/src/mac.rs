@@ -509,8 +509,10 @@ pub fn run() {
     prendi_il_posto();
     // "Apri al login" segue la copia appena avviata
     autostart::aggiorna();
-    // e anche lo screensaver, se è installato: dopo un aggiornamento dell'app è la versione nuova
-    salvaschermo::aggiorna_se_installato();
+    // e anche lo screensaver, se è installato: dopo un aggiornamento dell'app è la versione nuova.
+    // In un thread a parte: confronta i file del modulo, e all'accesso il disco è lento (lo
+    // sfondo non lo deve aspettare)
+    std::thread::spawn(|| objc2::rc::autoreleasepool(|_| salvaschermo::aggiorna_se_installato()));
     let mut event_loop = EventLoopBuilder::<Evento>::with_user_event().build();
     // niente icona nel Dock né nel selettore delle app: solo la barra dei menu
     event_loop.set_activation_policy(ActivationPolicy::Accessory);
