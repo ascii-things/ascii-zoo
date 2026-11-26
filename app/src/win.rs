@@ -2,11 +2,11 @@
 //!
 //! - per ogni monitor una finestra con dentro WebView2 viene messa dietro le icone del desktop
 //! - una finestra nascosta di controllo tiene il timer e si accorge dei cambi di schermo
-//!   (monitor collegati/scollegati, risoluzione, riavvio di Explorer) e rifÃ  gli sfondi
+//!   (monitor collegati/scollegati, risoluzione, riavvio di Explorer) e rifà gli sfondi
 //! - un'icona nell'area di notifica ha tutte le opzioni
 //! - pausa automatica a batteria e, schermo per schermo, con app a schermo intero
 //! - un clic su una zona vuota del desktop arriva agli animali: un hook del mouse
-//!   guarda solo dove si clicca (non blocca e non cambia niente) e, se sotto c'Ã¨ il
+//!   guarda solo dove si clicca (non blocca e non cambia niente) e, se sotto c'è il
 //!   desktop, lo passa allo sfondo
 //! - il menu dell'icona resta aperto quando si sceglie un'impostazione (vedi `menu`)
 
@@ -51,7 +51,7 @@ const TIMER: usize = 1;
 const REBUILD_DELAY: u32 = 4;
 
 static PAGE_READY: AtomicBool = AtomicBool::new(false);
-/// un monitor Ã¨ cambiato o Explorer Ã¨ ripartito: gli sfondi vanno rifatti
+/// un monitor è cambiato o Explorer è ripartito: gli sfondi vanno rifatti
 static REBUILD: AtomicBool = AtomicBool::new(false);
 /// messaggio "TaskbarCreated", mandato da Explorer quando riparte
 static TASKBAR_CREATED: AtomicU32 = AtomicU32::new(0);
@@ -60,7 +60,7 @@ static CTL: AtomicIsize = AtomicIsize::new(0);
 /// clic sul desktop: x e y (pixel fisici dello schermo) in wParam e lParam
 const WM_CLIC: u32 = WM_APP + 1;
 
-/// HWND che wry puÃ² usare come finestra ospite
+/// HWND che wry può usare come finestra ospite
 struct Host(HWND);
 impl HasWindowHandle for Host {
     fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
@@ -239,7 +239,7 @@ impl App {
         s.js(&format!("window.zooPoke && zooPoke({px:.1}, {py:.1})"));
     }
 
-    /// rifÃ  gli sfondi se i monitor sono cambiati (o se Explorer ha distrutto le finestre)
+    /// rifà gli sfondi se i monitor sono cambiati (o se Explorer ha distrutto le finestre)
     fn rebuild(&mut self) {
         let mons = monitors();
         self.core.set_schermi(mons.iter().map(|m| m.1.clone()).collect());
@@ -301,7 +301,7 @@ impl App {
         }
         self.ticks = self.ticks.wrapping_add(1);
         if REBUILD.swap(false, Ordering::SeqCst) {
-            // altri cambi in arrivo spostano l'attesa: si rifÃ  tutto una volta sola
+            // altri cambi in arrivo spostano l'attesa: si rifà tutto una volta sola
             self.rebuild_at = Some(self.ticks.wrapping_add(REBUILD_DELAY));
         }
         if self.rebuild_at == Some(self.ticks) {
@@ -443,7 +443,7 @@ unsafe fn classe(h: HWND) -> String {
     String::from_utf16_lossy(&buf[..n])
 }
 
-/// true se nel punto c'Ã¨ il desktop (lo spazio tra le icone o lo sfondo stesso)
+/// true se nel punto c'è il desktop (lo spazio tra le icone o lo sfondo stesso)
 unsafe fn sul_desktop(pt: POINT) -> bool {
     let h = WindowFromPoint(pt);
     if h.is_invalid() {
@@ -484,7 +484,7 @@ unsafe fn desktop_coperto(r: RECT) -> bool {
 }
 
 /// Hook del mouse: legge solo dove si preme il tasto sinistro e lascia passare
-/// sempre il clic (CallNextHookEx), cosÃ¬ le icone funzionano come prima.
+/// sempre il clic (CallNextHookEx), così le icone funzionano come prima.
 /// Il lavoro vero si fa dopo, nella finestra di controllo.
 unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     if code == HC_ACTION as i32 && wp.0 as u32 == WM_LBUTTONDOWN {
@@ -534,7 +534,7 @@ unsafe extern "system" fn control_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPA
             LRESULT(0)
         }
         m if m != 0 && m == TASKBAR_CREATED.load(Ordering::SeqCst) => {
-            // Explorer Ã¨ ripartito: il desktop Ã¨ nuovo, gli sfondi vanno riagganciati
+            // Explorer è ripartito: il desktop è nuovo, gli sfondi vanno riagganciati
             REBUILD.store(true, Ordering::SeqCst);
             LRESULT(0)
         }

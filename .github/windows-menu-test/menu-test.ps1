@@ -421,5 +421,41 @@ if ($dlg -ne [IntPtr]::Zero) {
     Esito (AspettaChiuso) "clic fuori: il menu si chiude"
 }
 
+# 9. due livelli di sottomenu: Sfondo > Paesaggi > Stelle lascia aperti i tre menu, e Stelle
+#    (dopo gli 11 animali: posizione 12) va in config.json; poi di nuovo "A rotazione"
+Esito (ApriMenu) "il menu si riapre (via: $via)"
+$root = [W]::HMenu((Menus)[0])
+$sp = [W]::Find($root, 'Sfondo')
+$c = [W]::Center($root, $sp)
+if ($null -eq $c) { Esito $false "c'è la voce Sfondo"; Fine 1 }
+[W]::Move($c[0], $c[1]) | Out-Null
+if (-not (AspettaMenu 2)) { [W]::Click($c[0], $c[1]) | Out-Null; AspettaMenu 2 | Out-Null }
+$sfondo = [W]::GetSubMenu($root, $sp)
+Write-Host ([W]::Describe($sfondo))
+$pp = [W]::Find($sfondo, 'Paesaggi')
+$c = [W]::Center($sfondo, $pp)
+if ($null -eq $c) { Esito $false "il sottomenu Sfondo si apre"; Fine 1 }
+[W]::Move($c[0], $c[1]) | Out-Null
+if (-not (AspettaMenu 3)) { [W]::Click($c[0], $c[1]) | Out-Null; AspettaMenu 3 | Out-Null }
+$pae = [W]::GetSubMenu($sfondo, $pp)
+Write-Host ([W]::Describe($pae))
+$ps = [W]::Find($pae, 'Stelle')
+$c = [W]::Center($pae, $ps)
+if ($null -eq $c) { Esito $false "il sottomenu Sfondo > Paesaggi si apre"; Fine 1 }
+[W]::Click($c[0], $c[1]) | Out-Null
+Start-Sleep -Milliseconds 1000
+Esito ((Menus).Count -ge 3) "Sfondo > Paesaggi > Stelle: i tre menu restano aperti ($((Menus).Count) finestre)"
+Esito ([W]::Checked($pae, $ps)) "spunta su Stelle"
+Esito ((Cfg).animale -eq 12) "config.json: animale = $((Cfg).animale) (Stelle = 12)"
+Foto '5-sfondo-paesaggi-stelle'
+$c = [W]::Center($sfondo, [W]::Find($sfondo, 'A rotazione'))
+if ($null -ne $c) {
+    [W]::Click($c[0], $c[1]) | Out-Null
+    Start-Sleep -Milliseconds 800
+    Esito ((Cfg).animale -eq 0) "Sfondo > A rotazione: config.json: animale = $((Cfg).animale)"
+}
+[W]::Click($sw - 40, 40) | Out-Null
+Esito (AspettaChiuso) "clic fuori: il menu si chiude"
+
 $script:contaRighe = $true
 Fine 0
