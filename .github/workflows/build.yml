@@ -66,6 +66,9 @@ jobs:
           $dir = Join-Path $env:APPDATA 'AsciiZoo\scene'
           New-Item -ItemType Directory -Force $dir | Out-Null
           Copy-Item scene\lucciole.js $dir
+          # lucciole (voce 18: dopo 11 animali e 6 paesaggi) e tema chiaro: a pagina caricata devono
+          # esserci già, dalle impostazioni messe prima della pagina (script iniziale, ZOO_INIZIO)
+          Set-Content (Join-Path $env:APPDATA 'AsciiZoo\config.json') '{"animale": 18, "animali_di_serie": 11, "tema": "chiaro", "clic_desktop": false}'
           $env:ASCII_ZOO_LOG = '1'
           $p = Start-Process app\target\release\ascii-zoo.exe -PassThru -RedirectStandardError scene-win.log
           Start-Sleep 15
@@ -78,6 +81,7 @@ jobs:
           # 11 animali e 6 paesaggi
           if ($file.Count -ne 17) { Write-Error "in di-serie ci sono $($file.Count) file invece di 17"; exit 1 }
           if (-not (Select-String -Path scene-win.log -Pattern 'scena lucciole: "Lucciole"' -Quiet)) { Write-Error "lucciole.js non letta"; exit 1 }
+          if (-not (Select-String -Path scene-win.log -Pattern 'mostra lucciole, tema chiaro' -Quiet)) { Write-Error "a pagina caricata non ci sono già lucciole e tema chiaro (script iniziale)"; exit 1 }
           Remove-Item -Recurse -Force $dir
 
       - name: Prova lo screensaver - un fotogramma per scena, senza finestra
@@ -355,6 +359,10 @@ jobs:
           n=$(ls "$dir/scene/di-serie"/*.js | wc -l | tr -d ' ')
           [ "$n" = 17 ] || { echo "::error::in di-serie ci sono $n file invece di 17"; exit 1; }
           grep -q 'scena lucciole: "Lucciole"' scene-macos.log || { echo "::error::lucciole.js non letta"; exit 1; }
+          # a pagina caricata le lucciole ci sono già: lo script iniziale (ZOO_INIZIO) funziona anche
+          # in WKWebView, e la posizione 16 della 0.8 è diventata la 18
+          grep "avvio:" scene-macos.log || true
+          grep -q "mostra lucciole" scene-macos.log || { echo "::error::a pagina caricata non mostra le lucciole (script iniziale o migrazione)"; exit 1; }
           head -3 "$dir/scene/di-serie/koi.js"
           rm -rf "$dir/scene"
           if [ -f config-prima.json ]; then mv config-prima.json "$dir/config.json"; else rm -f "$dir/config.json"; fi

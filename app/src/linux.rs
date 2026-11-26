@@ -226,12 +226,15 @@ fn modo_wayland(bus: Option<&gio::DBusConnection>) -> Option<Vec<StatoSchermo>> 
     // All'accesso ASCII Zoo può partire prima che GNOME Shell abbia caricato le estensioni. Se
     // la nostra è accesa la si aspetta: partire su X11 e ripartire appena risponde voleva dire
     // due avvii di WebKit e lo sfondo che spariva e ricompariva. Non oltre ATTESA_ALL_ACCESSO,
-    // e si smette subito se GNOME dice che non può partire (errore, GNOME di un'altra versione).
+    // e si smette prima se non arriverà: GNOME Shell non risponde, non conosce l'estensione
+    // (appena installata: la carica solo al prossimo accesso), o dice che non può accenderla.
     if !gnome() || !estensione_accesa() {
         return None;
     }
     let inizio = Instant::now();
     let mut visto = None;
+    let mut sconosciuta: Option<Instant> = None;
+    let poco = Duration::from_secs(2);
     while inizio.elapsed() < ATTESA_ALL_ACCESSO {
         std::thread::sleep(Duration::from_millis(100));
         if let Some(stato) = chiedi_stato(bus) {
@@ -243,11 +246,25 @@ fn modo_wayland(bus: Option<&gio::DBusConnection>) -> Option<Vec<StatoSchermo>> 
             zoo_log!("sfondo: aspetto l'estensione di GNOME, stato {st:?} dopo {} ms", inizio.elapsed().as_millis());
             visto = st;
         }
-        // 3 (errore) è anche lo stato di un'estensione che GNOME sta ancora caricando: conta solo
-        // se GNOME ha registrato degli errori; 4 = fatta per un'altra versione di GNOME
-        if st == Some(4.0) || (st == Some(3.0) && errori_estensione(bus) > 0) {
-            zoo_log!("sfondo: GNOME non può accendere l'estensione (stato {st:?})");
-            break;
+        match st {
+            // GNOME Shell non risponde (non c'è, o non è GNOME Shell)
+            None if inizio.elapsed() > poco => {
+                zoo_log!("sfondo: GNOME Shell non risponde");
+                break;
+            }
+            // risponde ma non la conosce: installata dopo l'accesso, la caricherà al prossimo
+            // (all'accesso GNOME la conosce già al primo controllo: basta un secondo)
+            Some(None) if sconosciuta.get_or_insert_with(Instant::now).elapsed() > Duration::from_secs(1) => {
+                zoo_log!("sfondo: GNOME non ha caricato l'estensione (lo farà al prossimo accesso)");
+                break;
+            }
+            // 3 (errore) è anche lo stato di un'estensione che GNOME sta ancora caricando: conta
+            // solo se GNOME ha registrato degli errori; 4 = fatta per un'altra versione di GNOME
+            Some(Some(x)) if x == 4.0 || (x == 3.0 && errori_estensione(bus) > 0) => {
+                zoo_log!("sfondo: GNOME non può accendere l'estensione (stato {x})");
+                break;
+            }
+            _ => {}
         }
     }
     None
@@ -294,8 +311,8 @@ fn errori_estensione(bus: &gio::DBusConnection) -> usize {
 }
 
 /// Lo stato dell'estensione secondo GNOME Shell (1 accesa, 3 errore, 4 per un'altra versione
-/// di GNOME, 6 caricata…); None se Shell non risponde o non la conosce ancora
-fn stato_estensione(bus: &gio::DBusConnection) -> Option<f64> {
+/// di GNOME, 6 caricata…); Some(None) se Shell risponde ma non la conosce, None se non risponde
+fn stato_estensione(bus: &gio::DBusConnection) -> Option<Option<f64>> {
     let v = bus
         .call_sync(
             Some("org.gnome.Shell"),
@@ -310,7 +327,7 @@ fn stato_estensione(bus: &gio::DBusConnection) -> Option<f64> {
         )
         .ok()?;
     let (info,) = v.get::<(std::collections::HashMap<String, glib::Variant>,)>()?;
-    info.get("state")?.get::<f64>()
+    Some(info.get("state").and_then(|s| s.get::<f64>()))
 }
 
 /// Modo Wayland senza l'estensione (spenta, o non prende le finestre): si riparte su X11,
