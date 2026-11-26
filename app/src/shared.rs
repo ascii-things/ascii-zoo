@@ -416,6 +416,12 @@ pub struct Menus {
     pub foto: MenuItem,
     pub ricarica: MenuItem,
     pub esci: MenuItem,
+    /// in cima al menu, solo quando su GitHub c'è una versione più nuova (vedi
+    /// Core::mostra_aggiornamento): apre la pagina per scaricarla
+    aggiornamento: MenuItem,
+    aggiornamento_riga: PredefinedMenuItem,
+    /// "Avvisa quando esce una versione nuova"
+    pub aggiornamenti: CheckMenuItem,
 }
 
 /// cosa deve fare il programma dopo una voce del menu
@@ -455,6 +461,12 @@ pub struct Core {
     pomodoro_titolo: String,
     /// "Rotazione > Spenta": gli sfondi che le pagine dicono di mostrare, man mano che rispondono
     animale_mostrato: std::sync::Arc<std::sync::Mutex<Option<Fermo>>>,
+    /// il menu dell'icona (per la voce dell'aggiornamento, che compare e scompare)
+    menu: Menu,
+    /// il controllo della versione su GitHub, una volta al giorno
+    controllo: crate::aggiornamenti::Controllo,
+    /// la voce dell'aggiornamento è nel menu
+    avviso_nel_menu: bool,
 }
 
 /// "Rotazione > Spenta": le risposte delle pagine (id dello schermo → sfondo mostrato, 1.. come
@@ -492,7 +504,11 @@ impl Core {
             pomodoro,
             pomodoro_titolo: String::new(),
             animale_mostrato: Default::default(),
+            menu: menu.clone(),
+            controllo: Default::default(),
+            avviso_nel_menu: false,
         };
+        core.mostra_aggiornamento();
         core.tema_pagina = core.tema_ora();
         zoo_log!("tema: {} (alla pagina: {})", core.cfg.tema, core.tema_pagina);
         (core, menu)
@@ -617,7 +633,42 @@ impl Core {
             js.push(self.js_pomodoro());
         }
         self.aggiorna_menu_pomodoro();
+        if let Some(v) = self.controllo.giro(self.cfg.controlla_aggiornamenti, self.cfg.aggiornamenti_ultimo) {
+            self.cfg.aggiornamenti_ultimo = crate::aggiornamenti::adesso();
+            self.cfg.versione_disponibile = v;
+            self.cfg.save();
+        }
+        // anche a ogni giro: su Windows la voce non si mette né si toglie a menu aperto
+        self.mostra_aggiornamento();
         js
+    }
+
+    /// la voce "È uscita la versione…" in cima al menu: c'è solo se l'ultima versione trovata
+    /// su GitHub è più nuova di questa (e l'avviso è acceso)
+    fn mostra_aggiornamento(&mut self) {
+        let v = &self.cfg.versione_disponibile;
+        let mostra = self.cfg.controlla_aggiornamenti && crate::aggiornamenti::piu_nuova(v);
+        let m = &self.menus;
+        if mostra {
+            m.aggiornamento.set_text(format!("È uscita la versione {v}: scaricala…"));
+        }
+        if mostra == self.avviso_nel_menu {
+            return;
+        }
+        // Windows: cambiare le voci di un menu mentre TrackPopupMenu lo mostra lo lascia
+        // disegnato a metà; lo si fa al prossimo giro, a menu chiuso
+        #[cfg(windows)]
+        if crate::win::menu::aperto() {
+            return;
+        }
+        if mostra {
+            let r = self.menu.insert(&m.aggiornamento, 0).and_then(|_| self.menu.insert(&m.aggiornamento_riga, 1));
+            zoo_log!("aggiornamenti: nel menu la versione {v} ({r:?})");
+        } else {
+            let r = self.menu.remove(&m.aggiornamento).and_then(|_| self.menu.remove(&m.aggiornamento_riga));
+            zoo_log!("aggiornamenti: voce tolta dal menu ({r:?})");
+        }
+        self.avviso_nel_menu = mostra;
     }
 
     /// zooSetting('pomodoro', …): a tutte le pagine; lo mostrano quelle con i widget
@@ -865,6 +916,16 @@ impl Core {
         let m = &self.menus;
         if id == m.scene_cartella.id().0 {
             crate::scene::apri_cartella();
+            return Esito::Niente;
+        }
+        if id == m.aggiornamento.id().0 {
+            crate::aggiornamenti::apri_pagina();
+            return Esito::Niente;
+        }
+        if id == m.aggiornamenti.id().0 {
+            self.cfg.controlla_aggiornamenti = m.aggiornamenti.is_checked();
+            self.mostra_aggiornamento();
+            self.cfg.save();
             return Esito::Niente;
         }
         #[cfg(any(windows, target_os = "macos"))]
@@ -1464,6 +1525,9 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
         foto: MenuItem::new("Salva una foto dello sfondo", true, None),
         ricarica: MenuItem::new("Ricarica sfondo", true, None),
         esci: MenuItem::new("Esci", true, None),
+        aggiornamento: MenuItem::new("È uscita una versione nuova: scaricala…", true, None),
+        aggiornamento_riga: PredefinedMenuItem::separator(),
+        aggiornamenti: CheckMenuItem::new("Avvisa quando esce una versione nuova", true, cfg.controlla_aggiornamenti, None),
     };
     // gli schermi veri arrivano con set_schermi: per ora come con uno solo
     riempi_sfondo(&mut m, cfg, &[]);
@@ -1482,6 +1546,7 @@ fn build_menu(cfg: &Config, solo_windows: bool) -> (Menu, Menus) {
     let _ = menu.append(&m.schermo);
     let _ = menu.append(&m.coperto);
     let _ = menu.append(&m.avvio);
+    let _ = menu.append(&m.aggiornamenti);
     // Windows e macOS: un sottomenu, la scena si sceglie da qui (Linux ha il suo, con i minuti)
     #[cfg(target_os = "linux")]
     let _ = solo_windows;

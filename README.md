@@ -28,7 +28,7 @@ Animated wallpapers are fun, but the apps that run them are often heavy, closed 
 We wanted the opposite: a **tiny, fast, open-source** live wallpaper that looks good on any desktop.
 
 - **Light.** Under 1 MB on Windows, capped at 30 fps and redrawing only the cells that change (usually about 1 in 10). It pauses on battery and whenever nobody can see it (fullscreen apps, covered desktop, locked screen; details per OS in the [Italian README](README.it.md)).
-- **Private.** No internet, no telemetry, no account. The whole wallpaper is a single HTML file built into the app.
+- **Private.** No telemetry, no account. The only thing it asks the internet is, once a day, whether a new version is out (you can switch it off). The whole wallpaper is a single HTML file built into the app.
 - **Open.** MIT licensed, built in public, with every release compiled by GitHub Actions from the tagged source.
 
 ## Built fast, with AI
@@ -114,7 +114,7 @@ Scene and animal files are code written by someone else, so inside the app the w
 on Windows SmartScreen says *"Windows protected your PC"* → **More info → Run anyway**;
 on macOS go to **System Settings → Privacy & Security → Open Anyway**.
 
-**Updating.** Just start the new version: it closes the running one and takes its place (autostart too, if enabled).
+**Updating.** When a new version is out, an item at the top of the tray menu opens its download page. Just start the new version: it closes the running one and takes its place (autostart too, if enabled).
 
 **Can I trust the binary?** It's never committed to the repo: GitHub Actions builds it from the tagged source ([workflow](.github/workflows/build.yml), public logs), and every release ships a SHA256 and a GitHub provenance attestation:
 
@@ -134,7 +134,7 @@ The app only writes its settings file (and an autostart entry or the screensaver
 
 ### Privacy
 
-This program will not transfer any information to other networked systems unless specifically requested by the user. It has no telemetry, no accounts and no update checks; the only network request is the web search you type yourself in the browser version of the page. In the app the wallpaper page is not allowed to use the network at all, so [your own scenes](#your-own-scenes) can't either.
+This program will not transfer any information to other networked systems unless specifically requested by the user, with one exception that you can switch off: the update check. Once a day the app asks GitHub for the latest published version, with one HTTPS request to `api.github.com/repos/ascii-things/ascii-zoo/releases/latest` made by the system's own `curl` (on Linux `wget` or `python3` if curl is missing) with `ascii-zoo/<version>` as user agent. GitHub sees your IP address and which version you run; nothing else is sent. If a newer version exists, an item at the top of the tray menu opens its download page: nothing is downloaded or installed on its own. Untick **Avvisa quando esce una versione nuova** in the menu and the app never connects again. It has no telemetry and no accounts; the only other network request is the web search you type yourself in the browser version of the page. In the app the wallpaper page is not allowed to use the network at all, so [your own scenes](#your-own-scenes) can't either.
 
 ### Code signing policy
 

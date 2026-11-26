@@ -68,20 +68,27 @@ jobs:
           Copy-Item scene\lucciole.js $dir
           # lucciole (voce 18: dopo 11 animali e 6 paesaggi) e tema chiaro: a pagina caricata devono
           # esserci già, dalle impostazioni messe prima della pagina (script iniziale, ZOO_INIZIO)
-          Set-Content (Join-Path $env:APPDATA 'AsciiZoo\config.json') '{"animale": 18, "animali_di_serie": 11, "tema": "chiaro", "clic_desktop": false}'
+          # avviso di aggiornamento: una versione 99.0.0 vista "ieri" mette la voce in cima al menu; il
+          # controllo subito (ASCII_ZOO_AGGIORNAMENTI_SUBITO) chiede a GitHub con il curl di Windows,
+          # trova l'ultima vera e la voce se ne va
+          Set-Content (Join-Path $env:APPDATA 'AsciiZoo\config.json') '{"animale": 18, "animali_di_serie": 11, "tema": "chiaro", "clic_desktop": false, "versione_disponibile": "99.0.0"}'
           $env:ASCII_ZOO_LOG = '1'
+          $env:ASCII_ZOO_AGGIORNAMENTI_SUBITO = '1'
           $p = Start-Process app\target\release\ascii-zoo.exe -PassThru -RedirectStandardError scene-win.log
           Start-Sleep 15
           Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
           Start-Sleep 2
           # anche i tempi dell'avvio (finestra e WebView, pagina caricata, primo fotogramma)
-          Get-Content scene-win.log | Select-String 'scena|avvio'
+          Get-Content scene-win.log | Select-String 'scena|avvio|aggiornamenti'
           $file = @(Get-ChildItem (Join-Path $dir 'di-serie') -Filter *.js)
           "di-serie: $($file.Count) file: $($file.Name -join ', ')"
           # 11 animali e 6 paesaggi
           if ($file.Count -ne 17) { Write-Error "in di-serie ci sono $($file.Count) file invece di 17"; exit 1 }
           if (-not (Select-String -Path scene-win.log -Pattern 'scena lucciole: "Lucciole"' -Quiet)) { Write-Error "lucciole.js non letta"; exit 1 }
           if (-not (Select-String -Path scene-win.log -Pattern 'mostra lucciole, tema chiaro' -Quiet)) { Write-Error "a pagina caricata non ci sono già lucciole e tema chiaro (script iniziale)"; exit 1 }
+          if (-not (Select-String -Path scene-win.log -SimpleMatch -Pattern 'nel menu la versione 99.0.0 (Ok(()))' -Quiet)) { Write-Error "la voce dell'aggiornamento non è nel menu"; exit 1 }
+          if (Select-String -Path scene-win.log -Pattern 'controllo non riuscito' -Quiet) { Write-Warning "GitHub non ha risposto (rete o limite delle richieste)" }
+          elseif (-not (Select-String -Path scene-win.log -SimpleMatch -Pattern 'voce tolta dal menu (Ok(()))' -Quiet)) { Write-Error "il controllo degli aggiornamenti non è finito (curl di Windows)"; exit 1 }
           Remove-Item -Recurse -Force $dir
 
       - name: Prova lo screensaver - un fotogramma per scena, senza finestra
@@ -347,8 +354,9 @@ jobs:
           mkdir -p "$dir/scene"
           cp scene/lucciole.js "$dir/scene/"
           cp "$dir/config.json" config-prima.json 2>/dev/null || true
-          echo '{"animale": 16, "clic_desktop": false}' > "$dir/config.json"
-          ASCII_ZOO_LOG=1 "build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" 2> scene-macos.log &
+          echo '{"animale": 16, "clic_desktop": false, "versione_disponibile": "99.0.0"}' > "$dir/config.json"
+          # avviso di aggiornamento (come su Windows): voce nel menu, poi il controllo subito la toglie
+          ASCII_ZOO_LOG=1 ASCII_ZOO_AGGIORNAMENTI_SUBITO=1 "build/ASCII Zoo.app/Contents/MacOS/ascii-zoo" 2> scene-macos.log &
           pid=$!
           sleep 15
           screencapture -x prova-screensaver/scene-lucciole.png || echo "::warning::screenshot non riuscito"
@@ -363,6 +371,10 @@ jobs:
           # in WKWebView, e la posizione 16 della 0.8 è diventata la 18
           grep "avvio:" scene-macos.log || true
           grep -q "mostra lucciole" scene-macos.log || { echo "::error::a pagina caricata non mostra le lucciole (script iniziale o migrazione)"; exit 1; }
+          grep "aggiornamenti" scene-macos.log || true
+          grep -qF "nel menu la versione 99.0.0 (Ok(()))" scene-macos.log || { echo "::error::la voce dell'aggiornamento non è nel menu"; exit 1; }
+          if grep -q "controllo non riuscito" scene-macos.log; then echo "::warning::GitHub non ha risposto (rete o limite delle richieste)"
+          else grep -qF "voce tolta dal menu (Ok(()))" scene-macos.log || { echo "::error::il controllo degli aggiornamenti non è finito"; exit 1; }; fi
           head -3 "$dir/scene/di-serie/koi.js"
           rm -rf "$dir/scene"
           if [ -f config-prima.json ]; then mv config-prima.json "$dir/config.json"; else rm -f "$dir/config.json"; fi

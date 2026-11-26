@@ -11,7 +11,7 @@
 //! - il menu dell'icona resta aperto quando si sceglie un'impostazione (vedi `menu`)
 
 #[path = "menu_win.rs"]
-mod menu;
+pub(crate) mod menu;
 
 use std::cell::RefCell;
 use std::num::NonZeroIsize;

@@ -81,6 +81,13 @@ pub struct Config {
     pub salvaschermo_minuti: u32,
     /// solo Linux: la scena dello screensaver, un id di ascii_dreams::scene() oppure "rotazione"
     pub salvaschermo_scena: String,
+    /// una volta al giorno si chiede a GitHub se c'è una versione nuova (vedi aggiornamenti.rs)
+    pub controlla_aggiornamenti: bool,
+    /// quando lo si è chiesto l'ultima volta (secondi dal 1970, 0 = mai)
+    pub aggiornamenti_ultimo: u64,
+    /// l'ultima versione trovata su GitHub ("" = non si sa): resta nel menu anche dopo un
+    /// riavvio, finché questa non è più vecchia
+    pub versione_disponibile: String,
 }
 
 impl Default for Config {
@@ -118,6 +125,9 @@ impl Default for Config {
             fotogrammi: 30,
             salvaschermo_minuti: 0,
             salvaschermo_scena: "rotazione".into(),
+            controlla_aggiornamenti: true,
+            aggiornamenti_ultimo: 0,
+            versione_disponibile: String::new(),
         }
     }
 }

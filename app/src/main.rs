@@ -10,6 +10,7 @@
 
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod aggiornamenti;
 mod config;
 mod foto;
 mod nerd;

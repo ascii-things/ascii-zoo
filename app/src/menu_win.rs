@@ -88,6 +88,11 @@ unsafe fn finestre_menu() -> Vec<HWND> {
     v
 }
 
+/// il menu dell'icona (o un suo sottomenu) è aperto adesso
+pub fn aperto() -> bool {
+    unsafe { !finestre_menu().is_empty() }
+}
+
 /// il menu mostrato in una finestra "#32768"
 unsafe fn menu_di(h: HWND) -> Option<HMENU> {
     let m = SendMessageW(h, MN_GETHMENU, None, None).0;
