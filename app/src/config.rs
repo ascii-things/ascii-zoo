@@ -310,6 +310,19 @@ pub mod autostart {
         RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(RUN, KEY_READ).and_then(|k| k.get_value::<String, _>(NAME)).ok()
     }
 
+    /// Il valore nella chiave Run, che si crea se non c'è (su un profilo appena fatto può
+    /// mancare: aprirla e basta falliva, e l'avvio con Windows non partiva, senza dire niente)
+    fn scrivi_run(valore: &str) {
+        match RegKey::predef(HKEY_CURRENT_USER).create_subkey_with_flags(RUN, KEY_WRITE) {
+            Ok((key, _)) => {
+                if let Err(e) = key.set_value(NAME, &valore.to_string()) {
+                    crate::shared::zoo_log!("avvio con Windows: chiave Run non scritta ({e})");
+                }
+            }
+            Err(e) => crate::shared::zoo_log!("avvio con Windows: chiave Run non aperta ({e})"),
+        }
+    }
+
     fn valore_run(exe: &std::path::Path) -> String {
         format!("\"{}\" {ACCESSO}", exe.display())
     }
@@ -436,9 +449,7 @@ pub mod autostart {
     pub fn set(on: bool) {
         if on {
             let Ok(exe) = std::env::current_exe() else { return };
-            if let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(RUN, KEY_WRITE) {
-                let _ = key.set_value(NAME, &valore_run(&exe));
-            }
+            scrivi_run(&valore_run(&exe));
             registra(&exe);
         } else {
             if let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(RUN, KEY_WRITE) {
@@ -464,9 +475,7 @@ pub mod autostart {
         }
         let giusto = valore_run(&exe);
         if !run.as_deref().is_some_and(|r| r.eq_ignore_ascii_case(&giusto)) {
-            if let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(RUN, KEY_WRITE) {
-                let _ = key.set_value(NAME, &giusto);
-            }
+            scrivi_run(&giusto);
         }
         // l'attività: c'è e lancia questo exe? (confronto senza maiuscole, come i percorsi di Windows)
         let comando = format!("<Command>{}</Command>", xml(&exe.display().to_string())).to_lowercase();
