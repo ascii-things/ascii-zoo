@@ -83,8 +83,8 @@ jobs:
           Get-Content scene-win.log | Select-String 'scena|avvio|aggiornamenti'
           $file = @(Get-ChildItem (Join-Path $dir 'di-serie') -Filter *.js)
           "di-serie: $($file.Count) file: $($file.Name -join ', ')"
-          # 13 animali e 7 paesaggi
-          if ($file.Count -ne 20) { Write-Error "in di-serie ci sono $($file.Count) file invece di 20"; exit 1 }
+          # 14 animali e 7 paesaggi
+          if ($file.Count -ne 21) { Write-Error "in di-serie ci sono $($file.Count) file invece di 21"; exit 1 }
           if (-not (Select-String -Path scene-win.log -Pattern 'scena lucciole: "Lucciole"' -Quiet)) { Write-Error "lucciole.js non letta"; exit 1 }
           if (-not (Select-String -Path scene-win.log -Pattern 'mostra lucciole, tema chiaro' -Quiet)) { Write-Error "a pagina caricata non ci sono già lucciole e tema chiaro (script iniziale)"; exit 1 }
           if (-not (Select-String -Path scene-win.log -SimpleMatch -Pattern 'nel menu la versione 99.0.0 (Ok(()))' -Quiet)) { Write-Error "la voce dell'aggiornamento non è nel menu"; exit 1 }
@@ -421,10 +421,10 @@ jobs:
           kill "$pid"
 
       # scene tue: con la cartella delle scene l'app scrive un file per ogni animale di serie in
-      # scene/di-serie (13 animali e 7 paesaggi), e lucciole.js è la voce 21 del menu Sfondo (dopo
-      # "A rotazione", i 13 animali e i 7 paesaggi): nella foto l'erba con le lucciole. Il
+      # scene/di-serie (14 animali e 7 paesaggi), e lucciole.js è la voce 22 del menu Sfondo (dopo
+      # "A rotazione", i 14 animali e i 7 paesaggi): nella foto l'erba con le lucciole. Il
       # config.json è scritto come una versione fino alla 0.8 (9 animali e 6 paesaggi, posizione
-      # 16, senza animali_di_serie): l'app lo sposta da sola alla 21, così si prova anche la migrazione
+      # 16, senza animali_di_serie): l'app lo sposta da sola alla 22, così si prova anche la migrazione
       - name: Prova - scene tue
         continue-on-error: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: |
@@ -443,10 +443,10 @@ jobs:
           grep "scena" scene-macos.log || true
           ls "$dir/scene/di-serie"
           n=$(ls "$dir/scene/di-serie"/*.js | wc -l | tr -d ' ')
-          [ "$n" = 20 ] || { echo "::error::in di-serie ci sono $n file invece di 20"; exit 1; }
+          [ "$n" = 21 ] || { echo "::error::in di-serie ci sono $n file invece di 21"; exit 1; }
           grep -q 'scena lucciole: "Lucciole"' scene-macos.log || { echo "::error::lucciole.js non letta"; exit 1; }
           # a pagina caricata le lucciole ci sono già: lo script iniziale (ZOO_INIZIO) funziona anche
-          # in WKWebView, e la posizione 16 della 0.8 è diventata la 21
+          # in WKWebView, e la posizione 16 della 0.8 è diventata la 22
           grep "avvio:" scene-macos.log || true
           grep -q "mostra lucciole" scene-macos.log || { echo "::error::a pagina caricata non mostra le lucciole (script iniziale o migrazione)"; exit 1; }
           grep "aggiornamenti" scene-macos.log || true

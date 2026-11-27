@@ -446,7 +446,7 @@ if ($null -eq $c) { Esito $false "il sottomenu Sfondo > Paesaggi si apre"; Fine 
 Start-Sleep -Milliseconds 1000
 Esito ((Menus).Count -ge 3) "Sfondo > Paesaggi > Stelle: i tre menu restano aperti ($((Menus).Count) finestre)"
 Esito ([W]::Checked($pae, $ps)) "spunta su Stelle"
-Esito ((Cfg).animale -eq 14) "config.json: animale = $((Cfg).animale) (Stelle = 14: dopo i 13 animali)"
+Esito ((Cfg).animale -eq 15) "config.json: animale = $((Cfg).animale) (Stelle = 15: dopo i 14 animali)"
 Foto '5-sfondo-paesaggi-stelle'
 $c = [W]::Center($sfondo, [W]::Find($sfondo, 'A rotazione'))
 if ($null -ne $c) {
