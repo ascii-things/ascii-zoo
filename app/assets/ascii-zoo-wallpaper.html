@@ -1891,6 +1891,119 @@ h1 {
   });
   // ==== fine uccellini ====
 
+  // ==== animale: api ====
+  // Api: ronzano a zig-zag sopra un prato, si posano sui fiori a prendere il polline (le zampe
+  // si fanno gialle) e lo portano all'arnia, dove entrano e dopo un po' escono di nuovo. Al
+  // clic sboccia un fiore: le api vicine ci vanno subito.
+  // c.carico: polline da portare all'arnia; c.dentro: secondi che restano nell'arnia.
+  // un posto libero su un fiore sbocciato da poco, vicino
+  function fioreNuovo(s, c, r) {
+    var best = r * r, p = null;
+    for (var i = 0; i < s.fiori.length; i++) {
+      var f = s.fiori[i];
+      if (!f.clic || f.cresce < 0.8 || f.appassisce > 0) continue;
+      for (var k = 0; k < f.posti.length; k++) {
+        var q = f.posti[k];
+        if (q.taken) continue;
+        var d2 = (q.x - c.x) * (q.x - c.x) + (q.y - c.y) * (q.y - c.y);
+        if (d2 < best) { best = d2; p = q; }
+      }
+    }
+    return p;
+  }
+
+  SPECIES.push({
+    id: 'api', label: 'Api', dot: '#ffc21a',
+    // 0 giallo, 1 nero, 2 ali, 3 ali chiare, 4 polline, 5 testa scura
+    pal: ['#ffc21a', '#2b2620', '#bcd4ec', '#eef6ff', '#ffe066', '#3a3128'],
+    dens: 520, min: 6, max: 26, smin: 7, smax: 10, off: 0, rad: 0.8,
+    perch: 1, sosta: [2.5, 4],
+    clicTesto: 'sboccia un fiore',
+    clic: function (w, x, y, s) {
+      w.ripple(x, y, 4, 0.6, 0);
+      if (!s || !s.fiori) return;
+      // al massimo 10 fiori del clic: il più vecchio appassisce
+      var nuovi = s.fiori.filter(function (f) { return f.clic && !(f.appassisce > 0); });
+      if (nuovi.length >= 10) nuovi[0].appassisce = 0.01;
+      var r = 2.4 + w.rnd() * 1.2, tipo = s.prossimoTipo = ((s.prossimoTipo || 0) + 1) % 4, f = { x: x, y: y, r: r, tipo: tipo, rot: w.rnd() * TAU, cresce: 0, appassisce: 0, clic: true, posti: [] };
+      for (var k = 0; k < 3; k++) {
+        var a = f.rot + k / 3 * TAU;
+        f.posti.push({ x: x + Math.cos(a) * r * 0.45, y: y + Math.sin(a) * r * 0.45, th: a + Math.PI, taken: null, fiore: f });
+      }
+      s.fiori.push(f);
+    },
+    spawn: function (c, w) {
+      c.th = w.rnd() * TAU; c.hd = c.th; c.carico = false; c.dentro = 0; c.zig = w.rnd() * TAU;
+    },
+    sveglia: function (c, w) {
+      // dal fiore: col polline, verso l'arnia
+      c.carico = true; c.flee = 0.3; c.fleeTh = c.th + Math.PI + (w.rnd() - 0.5);
+    },
+    update: function (c, dt, t, w) {
+      var s = w.sceneSp === c.kind ? w.sceneData(c.kind) : null, target, v;
+      c.ph += dt * 40; // le ali
+      if (c.perched) { c.sp = 0; c.th += Math.sin(t * 3 + c.seed * 9) * dt * 0.8; return; }
+      if (c.dentro > 0) {
+        // nell'arnia: non si vede; poi esce dall'ingresso
+        c.a = 0; c.sp = 0;
+        if ((c.dentro -= dt) <= 0 && s && s.arnia) {
+          c.x = s.arnia.ix; c.y = s.arnia.iy; c.th = s.arnia.th + (w.rnd() - 0.5) * 0.8; c.hd = c.th; c.carico = false;
+        } else return;
+      }
+      if (c.goal) {
+        // verso il fiore (o l'orologio), ronzando
+        steer(c, Math.atan2(c.goal.y - c.y, c.goal.x - c.x) + Math.sin(t * 9 + c.seed * 20) * 0.3, 8, dt);
+        var d = Math.sqrt((c.goal.x - c.x) * (c.goal.x - c.x) + (c.goal.y - c.y) * (c.goal.y - c.y));
+        c.sp += (Math.min(11 + 5 * c.z, 0.5 + d * 2.5) - c.sp) * Math.min(1, 8 * dt);
+        advance(c, dt);
+        return;
+      }
+      // un fiore appena sbocciato vicino: subito lì
+      var p = s && s.fiori && !c.carico ? fioreNuovo(s, c, w.pokeR * 2) : null;
+      if (p && !(c.flee > 0)) { p.taken = c; c.spot = p; c.goal = p; c.gtime = 0; return; }
+      if (c.flee > 0) { steer(c, c.fleeTh, 8, dt); target = 14 + 5 * c.z; }
+      else if (c.carico && s && s.arnia) {
+        // il polline all'arnia: dritta all'ingresso, poi dentro
+        var ax = s.arnia.ix - c.x, ay = s.arnia.iy - c.y, ad = Math.sqrt(ax * ax + ay * ay);
+        steer(c, Math.atan2(ay, ax) + Math.sin(t * 8 + c.seed * 13) * 0.25, 6, dt);
+        target = Math.min(12 + 4 * c.z, 1 + ad * 3);
+        if (ad < 1) { c.dentro = 2 + w.rnd() * 6; c.sp = 0; return; }
+      } else {
+        // a zig-zag: la direzione cambia piano, con un tremolio
+        c.hd += (w.rnd() - 0.5) * 2.2 * dt;
+        if (s && s.arnia && w.rnd() < dt * 0.04) c.hd = Math.atan2(s.arnia.iy - c.y, s.arnia.ix - c.x) + Math.PI + (w.rnd() - 0.5) * 2;
+        steer(c, c.hd + Math.sin(t * 6 + c.zig) * 0.9, 6, dt);
+        target = 6 + 4 * c.z + 2 * Math.sin(t * 3 + c.seed * 9);
+      }
+      c.sp += (target - c.sp) * Math.min(1, 6 * dt);
+      advance(c, dt);
+    },
+    shape: function (x, y, c, o) {
+      var mt = c.mt, ay = y < 0 ? -y : y;
+      // le ali: due per lato, trasparenti, che vibrano (avanti e indietro)
+      var batte = c.perched ? 0.04 * Math.sin(c.ph * 0.15) : 0.08 * Math.sin(c.ph);
+      var wx = x - 0.02 - batte, wy = ay - 0.2, w1 = (wx * wx) / (0.2 * 0.2) + (wy * wy) / (0.12 * 0.12);
+      var wx2 = x + 0.12 - batte * 0.6, wy2 = ay - 0.15, w2 = (wx2 * wx2) / (0.12 * 0.12) + (wy2 * wy2) / (0.08 * 0.08);
+      // il corpo: testa, torace, addome a strisce
+      if (x > 0.17 && x < 0.32 && ay < Math.max(0.09, mt * 0.5)) {
+        if (x > 0.28 && ay > 0.04 && ay < 0.09) { o.v = 0.6; o.c = 1; return; } // antenne
+        o.v = 0.85; o.c = 5; return;
+      }
+      var tx = (x - 0.09) / 0.1, ty = y / 0.12;
+      if (tx * tx + ty * ty < 1) { o.v = 0.8; o.c = 1; if (c.carico && ay > 0.07) { o.v = 0.9; o.c = 4; } return; }
+      var bx = (x + 0.15) / 0.2, by = y / 0.15, b = bx * bx + by * by;
+      if (b < 1) {
+        var banda = ((x + 0.36) / 0.08) % 1 > 0.62;
+        o.v = 0.9 - 0.2 * b; o.c = banda ? 1 : 0;
+        if (x < -0.33) { o.v = 0.7; o.c = 1; } // il pungiglione
+        return;
+      }
+      if (c.carico && ay > 0.1 && ay < 0.18 && x > -0.08 && x < 0.04) { o.v = 0.95; o.c = 4; return; } // polline sulle zampe
+      if (w1 < 1 || w2 < 1) { o.v = 0.2 + 0.15 * Math.min(w1, w2); o.c = 2; }
+    }
+  });
+  // ==== fine api ====
+
   /* ------------------------------------------------------------------ */
   /* Scenografie: lo sfondo di ogni specie. Hanno uno stato proprio      */
   /* (rifatto se cambia la griglia), possono offrire posti dove posarsi  */
@@ -3084,6 +3197,97 @@ h1 {
     obstacles: function (w, s) { return s.ostacoli; }
   };
   // ==== fine uccellini ====
+  // ==== animale: api ====
+  // Api: un prato visto dall'alto, con l'erba a ciuffi e il trifoglio, qualche fiore (lavanda,
+  // margherite, papaveri, fiordalisi) e l'arnia di legno con il tetto e la tavoletta d'ingresso.
+  // I fiori del clic sbocciano piano; quando ce ne sono troppi il più vecchio appassisce.
+  function celleFiore(w, f, C, A, put) {
+    var R = f.r * f.cresce, petali = [5, 0, 8, 7][f.tipo], i, j;
+    if (R < 0.4) { w.put(Math.floor(f.x), Math.floor(f.y), 0.5, C + 4, A); return; }
+    for (j = Math.floor(f.y - R - 1); j <= f.y + R + 1; j++) {
+      for (i = Math.floor(f.x - R - 1); i <= f.x + R + 1; i++) {
+        var dx = i + 0.5 - f.x, dy = j + 0.5 - f.y, d = Math.sqrt(dx * dx + dy * dy);
+        if (d >= R) continue;
+        var cuore = d < R * (f.tipo === 2 ? 0.3 : 0.35);
+        if (f.tipo === 1) {
+          // lavanda: tanti puntini viola su un ciuffo
+          if (hash2(i * 3 + f.rot * 10, j * 7) < 0.55) w.put(i, j, 0.5 + 0.2 * hash2(i, j), C + (hash2(i, j * 3) < 0.5 ? 6 : 7), A);
+          continue;
+        }
+        var a = Math.atan2(dy, dx) - f.rot, petalo = Math.abs(Math.cos(a * petali / 2));
+        if (!cuore && d > R * (0.55 + 0.45 * petalo)) continue;
+        var col = cuore ? (f.tipo === 2 ? 1 : 4) : [8, 6, 9, 10][f.tipo];
+        w.put(i, j, cuore ? 0.75 : 0.6 + 0.2 * petalo, C + col, A);
+      }
+    }
+  }
+  SCENES.api = {
+    // 0 erba scura, 1 erba, 2 trifoglio, 3 fiore del trifoglio, 4 cuore giallo, 5 papavero scuro,
+    // 6 lavanda, 7 lavanda chiara, 8 margherita, 9 papavero, 10 fiordaliso, 11 legno dell'arnia,
+    // 12 tetto, 13 ingresso
+    pal: ['#24452a', '#3f7a3a', '#4f8f45', '#e9e2f0', '#ffd23a', '#2a1a1a', '#8e6bd1', '#b89cf0',
+          '#f6f4ee', '#e5382c', '#4f7fe6', '#c49a5a', '#8a5a34', '#141210'],
+    init: function (w) {
+      var s = { erba: [], celle: [], fiori: [], arnia: null, ostacoli: [] }, i, j, k;
+      // l'erba: ciuffi sparsi, chiazze di trifoglio
+      for (j = 0; j < w.rows; j++) {
+        for (i = 0; i < w.cols; i++) {
+          var h = hash2(i * 7 + 2, j * 5 + 9), tr = frattale(i * 0.08, j * 0.12, 2);
+          if (tr > 0.62 && h < 0.5) s.erba.push(i, j, 0.25 + 0.2 * h, h < 0.06 ? 3 : 2, 0.8);
+          else if (h < 0.09) s.erba.push(i, j, 0.15 + h * 2, h < 0.04 ? 0 : 1, 0.7);
+        }
+      }
+      // l'arnia: una cassa vista da sopra, il tetto a due falde, l'ingresso su un lato
+      var aw = Math.round(clamp(w.cols * 0.07, 8, 12)), ah = Math.round(aw * 0.75), pa = place(w, aw * 0.7 + 2, [], 4);
+      var ax = Math.round(pa.x - aw / 2), ay = Math.round(pa.y - ah / 2), giu = pa.y < w.rows / 2;
+      for (j = 0; j < ah; j++) {
+        for (i = 0; i < aw; i++) {
+          var bordo = i === 0 || i === aw - 1 || j === 0 || j === ah - 1, colmo = Math.abs(j - (ah - 1) / 2) < 0.6;
+          s.celle.push(ax + i, ay + j, bordo ? 0.55 : colmo ? 0.6 : 0.4 + 0.1 * ((i + (j < ah / 2 ? 0 : 1)) % 2), bordo || colmo ? 11 : 12, 1);
+        }
+      }
+      // l'ingresso e la tavoletta di atterraggio, dalla parte verso il centro dello schermo
+      var iy = giu ? ay + ah : ay - 1, ix = ax + Math.floor(aw / 2);
+      for (i = -2; i <= 2; i++) s.celle.push(ix + i, iy, Math.abs(i) < 2 ? 0.12 : 0.5, Math.abs(i) < 2 ? 13 : 11, 1);
+      for (i = -3; i <= 3; i++) s.celle.push(ix + i, iy + (giu ? 1 : -1), 0.45, 11, 0.9);
+      s.arnia = { ix: ix + 0.5, iy: iy + (giu ? 1.5 : -0.5), th: giu ? Math.PI / 2 : -Math.PI / 2 };
+      // solo per mettere i fiori: le api volano, l'arnia non le ferma
+      s.ostacoli.push({ x: pa.x, y: pa.y, r: aw * 0.55 });
+      // i fiori del prato (i clic ne aggiungono)
+      var n = clamp(Math.round(w.cols * w.rows / 1100), 5, 14);
+      for (k = 0; k < n; k++) {
+        var r = 1.8 + w.rnd() * 1.6, p = place(w, r + 1, s.ostacoli.concat(s.fiori), 3), f = { x: p.x, y: p.y, r: r, tipo: k % 4, rot: w.rnd() * TAU, cresce: 1, appassisce: 0, clic: false, posti: [] };
+        f.posti.push({ x: p.x, y: p.y, th: w.rnd() * TAU, taken: null, fiore: f });
+        s.fiori.push(f);
+      }
+      return s;
+    },
+    tick: function (w, dt, t, s) {
+      for (var k = s.fiori.length - 1; k >= 0; k--) {
+        var f = s.fiori[k];
+        if (f.cresce < 1) f.cresce = Math.min(1, f.cresce + dt * 0.7);
+        if (f.appassisce > 0 && (f.appassisce += dt * 0.5) >= 1) {
+          f.posti.forEach(function (q) { if (q.taken) { q.taken.spot = null; } });
+          s.fiori.splice(k, 1);
+        }
+      }
+    },
+    under: function (w, t, A, s) {
+      var C = this.c0 + this.sc0;
+      drawCells(w, s.erba, C, A);
+      drawCells(w, s.celle, C, A);
+      for (var k = 0; k < s.fiori.length; k++) {
+        var f = s.fiori[k];
+        celleFiore(w, f, C, A * (1 - (f.appassisce || 0)));
+      }
+    },
+    spots: function (w, s) {
+      var p = [];
+      for (var k = 0; k < s.fiori.length; k++) if (s.fiori[k].cresce >= 0.8 && !(s.fiori[k].appassisce > 0)) p.push.apply(p, s.fiori[k].posti);
+      return p;
+    }
+  };
+  // ==== fine api ====
 
   /* ------------------------------------------------------------------ */
   /* Paesaggi: sfondi senza animali, gli stessi dello screensaver         */
@@ -3887,7 +4091,7 @@ h1 {
 
   // quanto in alto, rispetto alla taglia, va il nome dell'animale
   var NAME_UP = { farfalle: 0.62, meduse: 0.55, libellule: 0.75, koi: 0.45, rane: 0.45, aironi: 0.8, granchi: 0.5,
-                  cavalli: 0.6, anatre: 0.45, gatti: 0.55, topi: 0.6, uccellini: 0.75 };
+                  cavalli: 0.6, anatre: 0.45, gatti: 0.55, topi: 0.6, uccellini: 0.75, api: 0.8 };
 
   Object.keys(SCENES).forEach(function (id) {
     var sp = byId(id), sc = SCENES[id];

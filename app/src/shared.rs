@@ -22,7 +22,7 @@ pub const URL: &str = "http://zoo.localhost/";
 pub const URL: &str = "zoo://localhost/";
 
 /// gli animali di serie, nello stesso ordine della pagina: (id, nome nel menu)
-pub const SPECIE: [(&str, &str); 12] = [
+pub const SPECIE: [(&str, &str); 13] = [
     ("farfalle", "Farfalle"),
     ("meduse", "Meduse"),
     ("libellule", "Libellule"),
@@ -35,6 +35,7 @@ pub const SPECIE: [(&str, &str); 12] = [
     ("gatti", "Gatti"),
     ("topi", "Topi"),
     ("uccellini", "Uccellini"),
+    ("api", "Api"),
 ];
 
 /// i paesaggi di serie, dopo gli animali nella pagina: sfondi senza animali, gli stessi
