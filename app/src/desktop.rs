@@ -34,21 +34,46 @@ unsafe extern "system" fn cerca_icone(top: HWND, out: LPARAM) -> BOOL {
     BOOL(1)
 }
 
-/// Explorer ha già fatto il desktop (Progman con le icone, SHELLDLL_DefView, dentro di lui o
-/// in una WorkerW) e la barra delle applicazioni (dove va l'icona)? All'accesso l'app può
-/// arrivare prima di lui.
-pub fn pronto() -> bool {
+/// A che punto è il desktop di Explorer (all'accesso l'app può arrivare prima di lui)
+#[derive(PartialEq, Eq, Debug)]
+pub enum Desktop {
+    /// manca Progman, le icone (SHELLDLL_DefView) o la barra delle applicazioni
+    No,
+    /// c'è tutto, ma la WorkerW dietro le icone non c'è ancora: agganciarsi adesso vorrebbe dire
+    /// finire sopra le icone (vedi `attach`, l'ultima possibilità)
+    Quasi,
+    /// pronto: la WorkerW c'è (dentro Progman su Windows 11 24H2 e dopo, se no di primo livello
+    /// dietro quella delle icone)
+    Si,
+}
+
+/// Come sta il desktop. Chiede anche a Explorer di fare la WorkerW (lo stesso messaggio di
+/// `attach`), così quando è pronto la WorkerW c'è già.
+pub fn pronto() -> Desktop {
     unsafe {
-        let Ok(progman) = FindWindowW(w!("Progman"), None) else { return false };
+        let Ok(progman) = FindWindowW(w!("Progman"), None) else { return Desktop::No };
         if FindWindowW(w!("Shell_TrayWnd"), None).is_err() {
-            return false;
+            return Desktop::No;
         }
-        if FindWindowExW(Some(progman), None, w!("SHELLDLL_DefView"), None).is_ok() {
-            return true;
+        let mut icone = FindWindowExW(Some(progman), None, w!("SHELLDLL_DefView"), None).is_ok();
+        if !icone {
+            let _ = EnumWindows(Some(cerca_icone), LPARAM(&mut icone as *mut bool as isize));
         }
-        let mut trovate = false;
-        let _ = EnumWindows(Some(cerca_icone), LPARAM(&mut trovate as *mut bool as isize));
-        trovate
+        if !icone {
+            return Desktop::No;
+        }
+        let mut res = 0usize;
+        SendMessageTimeoutW(progman, 0x052C, Default::default(), Default::default(), SMTO_NORMAL, 500, Some(&mut res));
+        SendMessageTimeoutW(progman, 0x052C, windows::Win32::Foundation::WPARAM(0xD), LPARAM(1), SMTO_NORMAL, 500, Some(&mut res));
+        let nuovo = FindWindowExW(Some(progman), None, w!("SHELLDLL_DefView"), None).is_ok()
+            && FindWindowExW(Some(progman), None, w!("WorkerW"), None).is_ok();
+        let mut worker = HWND::default();
+        let _ = EnumWindows(Some(find_icons_host), LPARAM(&mut worker as *mut HWND as isize));
+        if nuovo || !worker.is_invalid() {
+            Desktop::Si
+        } else {
+            Desktop::Quasi
+        }
     }
 }
 
@@ -75,12 +100,17 @@ pub unsafe fn attach(hwnd: HWND) -> Option<Embed> {
         // la WorkerW (sfondo fisso) va in fondo, non subito sotto questa finestra:
         // con più schermi le finestre agganciate prima finirebbero dietro di lei
         let _ = SetWindowPos(worker, Some(HWND_BOTTOM), 0, 0, 0, 0, flags);
+        crate::shared::zoo_log!("desktop: dentro Progman, tra le icone e la WorkerW (Windows 11 24H2 e dopo)");
         return Some(Embed { parent: progman });
     }
 
     let mut worker = HWND::default();
     let _ = EnumWindows(Some(find_icons_host), LPARAM(&mut worker as *mut HWND as isize));
     let parent = if worker.is_invalid() { progman } else { worker };
+    crate::shared::zoo_log!(
+        "desktop: {}",
+        if worker.is_invalid() { "nella Progman (la WorkerW non c'è: l'ultima possibilità)" } else { "nella WorkerW dietro le icone" }
+    );
     SetParent(hwnd, Some(parent)).ok()?;
     Some(Embed { parent })
 }

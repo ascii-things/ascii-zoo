@@ -614,14 +614,22 @@ pub fn run() {
         }
         // "Avvia con Windows" segue la copia appena avviata (chiama schtasks: in un thread)
         std::thread::spawn(autostart::aggiorna);
-        // all'accesso l'app può partire prima che Explorer abbia fatto il desktop e la barra
-        // delle applicazioni: li si aspetta (fino a un minuto)
+        // all'accesso l'app può partire prima che Explorer abbia fatto il desktop, la barra delle
+        // applicazioni e la WorkerW dietro le icone: li si aspetta (fino a un minuto). Se tutto il
+        // resto c'è ma la WorkerW non arriva, dopo un po' si va avanti come prima (10 secondi
+        // all'accesso, 2 avviando l'app a mano)
         let attesa = std::time::Instant::now();
-        while !desktop::pronto() && attesa.elapsed() < std::time::Duration::from_secs(60) {
+        let quasi_basta = std::time::Duration::from_secs(if std::env::args().any(|a| a == autostart::ACCESSO) { 10 } else { 2 });
+        let stato = loop {
+            let d = desktop::pronto();
+            let t = attesa.elapsed();
+            if d == desktop::Desktop::Si || (d == desktop::Desktop::Quasi && t >= quasi_basta) || t >= std::time::Duration::from_secs(60) {
+                break d;
+            }
             std::thread::sleep(std::time::Duration::from_millis(200));
-        }
-        if attesa.elapsed().as_millis() >= 200 {
-            zoo_log!("avvio: aspettato il desktop di Explorer per {} ms", attesa.elapsed().as_millis());
+        };
+        if attesa.elapsed().as_millis() >= 200 || stato != desktop::Desktop::Si {
+            zoo_log!("avvio: aspettato il desktop di Explorer per {} ms ({stato:?})", attesa.elapsed().as_millis());
         }
         // e anche lo screensaver, se è installato: dopo un aggiornamento dell'app è la versione
         // nuova. In un thread a parte: legge per intero due eseguibili per confrontarli, e
