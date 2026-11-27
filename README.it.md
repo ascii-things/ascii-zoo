@@ -15,10 +15,10 @@
 
 ## Gli animali
 
-Undici specie, una alla volta, ognuna con il suo ambiente (e sei [paesaggi](#i-paesaggi) senza animali). Di serie lo sfondo passa al successivo ogni 2 minuti, paesaggi compresi; dal menu del programma (**Rotazione**) si sceglie ogni quanto (da 30 secondi a un'ora) e quali animali far girare, oppure la si spegne: **Spenta** tiene lo sfondo che si vede in quel momento (lo stesso che sceglierlo in **Sfondo**). Quando il PC è in carica restano le koi nel loro stagno (si può disattivare).
+Quattordici specie, una alla volta, ognuna con il suo ambiente (e sette [paesaggi](#i-paesaggi) senza animali). Di serie lo sfondo passa al successivo ogni 2 minuti, paesaggi compresi; dal menu del programma (**Rotazione**) si sceglie ogni quanto (da 30 secondi a un'ora) e quali animali far girare, oppure la si spegne: **Spenta** tiene lo sfondo che si vede in quel momento (lo stesso che sceglierlo in **Sfondo**). Quando il PC è in carica restano le koi nel loro stagno (si può disattivare).
 
 <p align="center">
-  <img src="docs/animals.png" alt="Le undici specie, ognuna nel suo ambiente: farfalle sul prato fiorito, meduse tra le bolle, libellule sulle canne, koi nello stagno, rane nel prato con sassi e lucciole, aironi con i nidi, granchi sulla sabbia, cavalli nella prateria, anatre con gli anatroccoli nello stagno, gatti nel salotto, topi nella dispensa intorno a un pezzo di formaggio; più l'orologio" width="100%">
+  <img src="docs/animals.png" alt="Le quattordici specie, ognuna nel suo ambiente: farfalle sul prato fiorito, meduse tra le bolle, libellule sulle canne, koi nello stagno, rane nel prato con sassi e lucciole, aironi con i nidi, granchi sulla sabbia, cavalli nella prateria, anatre con gli anatroccoli nello stagno, gatti nel salotto, topi nella dispensa intorno a un pezzo di formaggio, uccellini nella piazza con la fontana, api sul prato con l'arnia e i fiori, cani nel giardino con la cuccia; più l'orologio" width="100%">
 </p>
 
 | Specie | Come si muove | L'ambiente | Con l'orologio |
