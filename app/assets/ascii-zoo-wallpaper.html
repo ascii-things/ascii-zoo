@@ -4560,7 +4560,8 @@ h1 {
     this.bv = new Float32Array(n);
     this.ba = new Float32Array(n);
     this.bw = new Float32Array(n);
-    this.bc = new Uint8Array(n);
+    // l'indice del colore nella tavolozza: più di 256 colori (tutte le specie e i paesaggi)
+    this.bc = new Uint16Array(n);
     this.stamp = new Int32Array(n).fill(-1);
     this.touched = new Int32Array(n);
     this.nt = 0;
