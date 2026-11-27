@@ -68,7 +68,7 @@ jobs:
           Copy-Item scene\lucciole.js $dir
           # lucciole e tema chiaro: a pagina caricata devono esserci già, dalle impostazioni messe prima
           # della pagina (script iniziale, ZOO_INIZIO). La 18 è scritta come nella 0.9 (11 animali, 6
-          # paesaggi, senza paesaggi_di_serie): con la Neve l'app la sposta da sola alla 19
+          # paesaggi, senza paesaggi_di_serie): con gli animali e i paesaggi nuovi l'app la sposta da sola (lucciole)
           # avviso di aggiornamento: una versione 99.0.0 vista "ieri" mette la voce in cima al menu; il
           # controllo subito (ASCII_ZOO_AGGIORNAMENTI_SUBITO) chiede a GitHub con il curl di Windows,
           # trova l'ultima vera e la voce se ne va
@@ -83,8 +83,8 @@ jobs:
           Get-Content scene-win.log | Select-String 'scena|avvio|aggiornamenti'
           $file = @(Get-ChildItem (Join-Path $dir 'di-serie') -Filter *.js)
           "di-serie: $($file.Count) file: $($file.Name -join ', ')"
-          # 11 animali e 7 paesaggi
-          if ($file.Count -ne 18) { Write-Error "in di-serie ci sono $($file.Count) file invece di 18"; exit 1 }
+          # 12 animali e 7 paesaggi
+          if ($file.Count -ne 19) { Write-Error "in di-serie ci sono $($file.Count) file invece di 19"; exit 1 }
           if (-not (Select-String -Path scene-win.log -Pattern 'scena lucciole: "Lucciole"' -Quiet)) { Write-Error "lucciole.js non letta"; exit 1 }
           if (-not (Select-String -Path scene-win.log -Pattern 'mostra lucciole, tema chiaro' -Quiet)) { Write-Error "a pagina caricata non ci sono già lucciole e tema chiaro (script iniziale)"; exit 1 }
           if (-not (Select-String -Path scene-win.log -SimpleMatch -Pattern 'nel menu la versione 99.0.0 (Ok(()))' -Quiet)) { Write-Error "la voce dell'aggiornamento non è nel menu"; exit 1 }
@@ -113,7 +113,9 @@ jobs:
           }
           # l'utente dell'accesso (Windows può riscriverlo come SID)
           $xml -split "`n" | Select-String 'UserId|Priority|WorkingDirectory' | Out-Host
-          $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').AsciiZoo
+          # solo il valore AsciiZoo: una volta leggere tutta la chiave Run del runner è andato in errore
+          $leggiRun = { (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name AsciiZoo -ErrorAction SilentlyContinue).AsciiZoo }
+          $run = & $leggiRun
           "chiave Run: $run"
           if ($run -ne "`"$exe`" --accesso") { Write-Error "chiave Run sbagliata: $run"; exit 1 }
           # l'attività parte davvero
@@ -136,7 +138,7 @@ jobs:
           if ($p.ExitCode -ne 0) { Write-Error "--avvio off: uscita $($p.ExitCode)"; exit 1 }
           schtasks /Query /TN "ASCII Zoo" 2>$null | Out-Null
           if ($LASTEXITCODE -eq 0) { Write-Error "spento, ma l'attività c'è ancora"; exit 1 }
-          if ((Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').AsciiZoo) { Write-Error "spento, ma la chiave Run c'è ancora"; exit 1 }
+          if (& $leggiRun) { Write-Error "spento, ma la chiave Run c'è ancora"; exit 1 }
           "spento: né attività né chiave Run"
           $global:LASTEXITCODE = 0
 
@@ -419,10 +421,10 @@ jobs:
           kill "$pid"
 
       # scene tue: con la cartella delle scene l'app scrive un file per ogni animale di serie in
-      # scene/di-serie (11 animali e 7 paesaggi), e lucciole.js è la voce 19 del menu Sfondo (dopo
-      # "A rotazione", gli 11 animali e i 7 paesaggi): nella foto l'erba con le lucciole. Il
+      # scene/di-serie (12 animali e 7 paesaggi), e lucciole.js è la voce 20 del menu Sfondo (dopo
+      # "A rotazione", i 12 animali e i 7 paesaggi): nella foto l'erba con le lucciole. Il
       # config.json è scritto come una versione fino alla 0.8 (9 animali e 6 paesaggi, posizione
-      # 16, senza animali_di_serie): l'app lo sposta da sola alla 19, così si prova anche la migrazione
+      # 16, senza animali_di_serie): l'app lo sposta da sola alla 20, così si prova anche la migrazione
       - name: Prova - scene tue
         continue-on-error: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: |
@@ -441,10 +443,10 @@ jobs:
           grep "scena" scene-macos.log || true
           ls "$dir/scene/di-serie"
           n=$(ls "$dir/scene/di-serie"/*.js | wc -l | tr -d ' ')
-          [ "$n" = 18 ] || { echo "::error::in di-serie ci sono $n file invece di 18"; exit 1; }
+          [ "$n" = 19 ] || { echo "::error::in di-serie ci sono $n file invece di 19"; exit 1; }
           grep -q 'scena lucciole: "Lucciole"' scene-macos.log || { echo "::error::lucciole.js non letta"; exit 1; }
           # a pagina caricata le lucciole ci sono già: lo script iniziale (ZOO_INIZIO) funziona anche
-          # in WKWebView, e la posizione 16 della 0.8 è diventata la 19
+          # in WKWebView, e la posizione 16 della 0.8 è diventata la 20
           grep "avvio:" scene-macos.log || true
           grep -q "mostra lucciole" scene-macos.log || { echo "::error::a pagina caricata non mostra le lucciole (script iniziale o migrazione)"; exit 1; }
           grep "aggiornamenti" scene-macos.log || true

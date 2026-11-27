@@ -1762,6 +1762,135 @@ h1 {
   });
   // ==== fine topi ====
 
+  // ==== animale: uccellini ====
+  // Uccellini: passeri, cinciallegre e pettirossi in una piazza vista dall'alto. Saltellano a
+  // piccoli balzi, si fermano a beccare, ogni tanto volano su una panchina, sul bordo della
+  // fontana o su un albero. Al clic arrivano le briciole: corrono tutti a beccarle. Quando
+  // scatta il minuto quelli vicini all'orologio volano via.
+  // c.vola: ali aperte (0..1); c.salto: tempo che resta del balzo; c.picchi: becchi da dare;
+  // c.coat: 0 passero, 1 cinciallegra, 2 pettirosso.
+  // la briciola più vicina
+  function briciolaVicina(w, c, r) {
+    var best = r * r, f = null;
+    for (var i = 0; i < w.food.length; i++) {
+      var q = w.food[i];
+      if (q.eaten) continue;
+      var d2 = (q.x - c.x) * (q.x - c.x) + (q.y - c.y) * (q.y - c.y);
+      if (d2 < best) { best = d2; f = q; }
+    }
+    return f;
+  }
+  // colori delle piume: parte 0 dorso, 1 ali, 2 testa, 3 guance/faccia, 4 coda
+  function piuma(c, parte, x, y, h) {
+    switch (c.coat) {
+      case 1: return [5, 8, 6, 7, 8][parte];                       // cinciallegra
+      case 2: return [9, 11, parte === 2 && x > 0.3 ? 10 : 9, 10, 11][parte]; // pettirosso
+      default:                                                     // passero, con le striature
+        if (parte === 0) return h < 0.3 ? 1 : 0;
+        return [0, h < 0.45 ? 1 : 12, 2, 3, 12][parte];
+    }
+  }
+
+  SPECIES.push({
+    id: 'uccellini', label: 'Uccellini', dot: '#e8783a',
+    // 0 dorso del passero, 1 striature, 2 testa grigia, 3 guance chiare, 4 becco e occhi, 5 dorso
+    // della cinciallegra, 6 testa nera, 7 bianco, 8 ali grigio-azzurre, 9 dorso del pettirosso,
+    // 10 arancio, 11 ali brune, 12 coda bruna
+    pal: ['#a87445', '#5c3c22', '#8f939c', '#e0d2b8', '#2a2a2e', '#94b04e', '#26282e', '#f3f3ef',
+          '#7590b4', '#8f7752', '#ee7d3c', '#6e5a3a', '#6b4b30'],
+    dens: 420, min: 8, max: 30, smin: 8, smax: 12, off: -0.02, rad: 0.95,
+    feeds: true, perch: 1.1,
+    sosta: [4, 8], // quanto restano su una panchina o sul bordo della fontana
+    spawn: function (c, w) {
+      c.th = w.rnd() * TAU; c.vola = 0; c.salto = 0; c.picchi = 0; c.becca = 0; c.timer = w.rnd();
+      c.testa = 0; c.volo = 0; c.vx = 0; c.vy = 0;
+      var r = w.rnd();
+      c.coat = r < 0.6 ? 0 : r < 0.82 ? 1 : 2;
+      c.bright = 0.6 + 0.4 * c.z; // piccoli: anche i lontani si devono leggere sul selciato
+    },
+    update: function (c, dt, t, w) {
+      var target = 0, ali = 0;
+      c.becca = Math.max(0, c.becca - dt * 5);
+      if (c.perched) {
+        // posato: si guarda intorno, ogni tanto si liscia le piume
+        c.sp = 0; c.vola = Math.max(0, c.vola - dt * 5);
+        c.testa = 0.5 * Math.sin(t * 0.9 + c.seed * 7) * (Math.sin(t * 0.37 + c.seed * 3) > 0 ? 1 : 0.2);
+        return;
+      }
+      if (c.goal) {
+        // in volo verso la panchina, la fontana, l'albero o l'orologio
+        c.vola = Math.min(1, c.vola + dt * 6); c.ph += dt * 34;
+        goTo(c, 7, 14 + 6 * c.z, 1.8, 10, dt);
+        return;
+      }
+      if (c.flee > 0) {
+        // spavento: via in volo
+        c.volo = Math.max(c.volo, 1.2 + w.rnd() * 0.8); c.hd = c.fleeTh + (w.rnd() - 0.5) * 0.6;
+      }
+      if (c.volo > 0) {
+        // un volo corto: ali aperte, poi si posa
+        c.volo -= dt; ali = 1;
+        steer(c, c.hd, 5, dt); target = 15 + 6 * c.z; c.ph += dt * 34;
+      } else {
+        var f = briciolaVicina(w, c, w.pokeR * 1.6);
+        if ((c.timer -= dt) <= 0) {
+          var r = w.rnd();
+          if (f) {
+            // verso la briciola, a balzi fitti; arrivati si becca
+            var dx = f.x - c.x, dy = f.y - c.y, d = Math.sqrt(dx * dx + dy * dy);
+            if (d < Math.max(0.9, c.S * 0.35)) { f.eaten = true; c.picchi = 2; c.becca = 1; c.timer = 0.35 + w.rnd() * 0.3; }
+            else { c.th = Math.atan2(dy, dx) + (w.rnd() - 0.5) * 0.4; c.salto = Math.min(0.16, d / 40 + 0.06); c.timer = 0.12 + w.rnd() * 0.12; }
+          } else if (r < 0.5) {
+            c.th += (w.rnd() - 0.5) * (w.rnd() < 0.2 ? 3 : 1.2); c.salto = 0.1 + w.rnd() * 0.06; c.timer = 0.25 + w.rnd() * 0.55;
+          } else if (r < 0.8) {
+            c.picchi = 2 + Math.floor(w.rnd() * 3); c.timer = 0.9 + w.rnd() * 0.8;
+          } else if (r < 0.985) {
+            c.timer = 0.6 + w.rnd() * 1.4; c.guarda = (w.rnd() - 0.5) * 1.6;
+          } else {
+            // un volo da un'altra parte della piazza
+            c.volo = 0.8 + w.rnd() * 1.4; c.hd = w.rnd() * TAU;
+          }
+        }
+        if (c.salto > 0) { c.salto -= dt; target = 9 + 4 * c.z; c.guarda = 0; }
+        if (c.picchi > 0 && c.becca <= 0.05) { c.picchi--; c.becca = 1; }
+      }
+      c.vola += (ali - c.vola) * Math.min(1, (ali ? 8 : 5) * dt);
+      c.testa += ((c.guarda || 0) - c.testa) * Math.min(1, 8 * dt);
+      // a balzi: la velocità arriva e se ne va di colpo (in volo più dolce)
+      c.sp += (target - c.sp) * Math.min(1, (ali ? 6 : 30) * dt);
+      advance(c, dt);
+    },
+    shape: function (x, y, c, o, h) {
+      var mt = c.mt, ay = y < 0 ? -y : y, v = c.vola;
+      // le ali aperte, che battono
+      if (v > 0.05) {
+        var sp = (0.3 + 0.7 * Math.abs(Math.sin(c.ph))) * 0.55 * v, u = (ay - 0.07) / Math.max(sp, 0.01);
+        if (u > 0 && u < 1 && x < 0.13 - 0.08 * u && x > -0.13 - 0.12 * u + 0.1 * u * u) {
+          o.v = 0.8 - 0.25 * u; o.c = piuma(c, 1, x, y, h); return;
+        }
+      }
+      // la testa, che gira e becca
+      var bx = 0.22 + 0.07 * c.becca, ca = Math.cos(c.testa), sa = Math.sin(c.testa);
+      var hx = (x - 0.1) * ca + y * sa + 0.1, hy = -(x - 0.1) * sa + y * ca, ahy = hy < 0 ? -hy : hy;
+      if (hx > bx + 0.1 && hx < bx + 0.21 && ahy < Math.max(0.05 - (hx - bx - 0.1) * 0.2, mt * 0.45)) { o.v = 0.85; o.c = 4; return; }
+      var dhx = hx - bx, dh = dhx * dhx + hy * hy;
+      if (dh < 0.15 * 0.15) {
+        if (ahy > 0.06 && ahy < 0.11 && dhx > 0.01 && dhx < 0.07) { o.v = 1; o.c = 4; return; } // occhi
+        var faccia = c.coat === 1 ? (ahy > 0.06 && dhx < 0.05 ? 3 : 2) : c.coat === 2 ? (dhx > -0.02 ? 3 : 2) : (ahy > 0.085 ? 3 : 2);
+        o.v = 0.9; o.c = piuma(c, faccia, hx, hy, h); return;
+      }
+      // il corpo: una goccia; ali chiuse sui lati, più scure
+      var ex = (x + 0.04) / 0.27, ey = y / (x > -0.04 ? 0.21 : 0.21 - (-0.04 - x) * 0.3), de = ex * ex + ey * ey;
+      if (de < 1) {
+        var ala = ay > 0.1 && x < 0.08;
+        o.v = 0.9 - 0.25 * de; o.c = piuma(c, ala ? 1 : 0, x, y, h); return;
+      }
+      // la coda
+      if (x < -0.28 && x > -0.5 && ay < Math.max(0.06 + 0.12 * (-0.28 - x), mt * 0.5)) { o.v = 0.7; o.c = piuma(c, 4, x, y, h); }
+    }
+  });
+  // ==== fine uccellini ====
+
   /* ------------------------------------------------------------------ */
   /* Scenografie: lo sfondo di ogni specie. Hanno uno stato proprio      */
   /* (rifatto se cambia la griglia), possono offrire posti dove posarsi  */
@@ -2843,6 +2972,118 @@ h1 {
     obstacles: function (w, s) { return s.ostacoli; }
   };
   // ==== fine topi ====
+  // ==== animale: uccellini ====
+  // Uccellini: una piazza vista dall'alto. Il selciato a ventaglio, una fontana tonda con
+  // l'acqua che tremola e lo zampillo, una panchina, uno o due alberi (le chiome viste da
+  // sopra) e qualche foglia caduta. Gli uccellini si posano sul bordo della fontana, sulla
+  // panchina e sulle chiome.
+  SCENES.uccellini = {
+    // 0 pietra scura, 1 pietra chiara, 2 fughe, 3 pietra della fontana, 4 acqua, 5 acqua chiara,
+    // 6 legno della panchina, 7 ferro, 8 chioma scura, 9 chioma chiara, 10-11 foglie cadute
+    pal: ['#3d4047', '#5b5f69', '#27292e', '#9a9ea8', '#2f6fb0', '#9ccbf2', '#a3713f', '#30333a',
+          '#2c6638', '#4e9a48', '#c98d38', '#b5533a'],
+    init: function (w) {
+      var s = { selciato: [], celle: [], posti: [], ostacoli: [], fontana: null }, i, j, k;
+      // il selciato: archi intorno a centri sparsi (i ventagli dei sampietrini)
+      var P = 9;
+      function centro(a, b) { return [(a + 0.5 + 0.25 * (hash2(a * 7 + 3, b * 5 + 1) - 0.5)) * P * 1.6, (b + 0.5 + 0.25 * (hash2(a * 3 + 9, b * 11 + 2) - 0.5)) * P]; }
+      for (j = 0; j < w.rows; j++) {
+        for (i = 0; i < w.cols; i++) {
+          var ga = Math.floor((i + 0.5) / (P * 1.6)), gb = Math.floor((j + 0.5) / P), d1 = 1e9, d2 = 1e9;
+          for (var b = -1; b <= 1; b++) {
+            for (var a = -1; a <= 1; a++) {
+              var p = centro(ga + a, gb + b), dx = i + 0.5 - p[0], dy = (j + 0.5 - p[1]) * 1.6, d = Math.sqrt(dx * dx + dy * dy);
+              if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+            }
+          }
+          var h = hash2(i * 5 + 1, j * 9 + 4), arco = (d1 / 2.1) % 1;
+          if (d2 - d1 < 0.9 || arco < 0.2) { if (h < 0.6) s.selciato.push(i, j, 0.1 + 0.05 * h, 2, 0.8); }
+          else if (h < 0.05) s.selciato.push(i, j, 0.1 + h * 2, h < 0.02 ? 1 : 0, 0.6);
+        }
+      }
+      // la fontana: un anello di pietra, l'acqua dentro, lo zampillo nel mezzo
+      var r = clamp(Math.min(w.cols, w.rows) * 0.11, 5, 9), pf = place(w, r + 2, [], 4);
+      s.fontana = { x: pf.x, y: pf.y, r: r };
+      s.ostacoli.push({ x: pf.x, y: pf.y, r: r - 0.5 });
+      for (j = Math.floor(pf.y - r - 1); j <= pf.y + r + 1; j++) {
+        for (i = Math.floor(pf.x - r - 1); i <= pf.x + r + 1; i++) {
+          var fd = Math.sqrt((i + 0.5 - pf.x) * (i + 0.5 - pf.x) + (j + 0.5 - pf.y) * (j + 0.5 - pf.y));
+          if (fd < r + 0.6 && fd >= r - 1.1) s.celle.push(i, j, 0.45 + 0.15 * hash2(i, j) + (i + j < pf.x + pf.y ? 0.08 : 0), 3, 0.95);
+        }
+      }
+      for (k = 0; k < 6; k++) {
+        var an = k / 6 * TAU + 0.3;
+        s.posti.push({ x: pf.x + Math.cos(an) * (r + 0.2), y: pf.y + Math.sin(an) * (r + 0.2), th: an + Math.PI, taken: null });
+      }
+      // la panchina: assi di legno, i piedi di ferro
+      var bw = Math.round(clamp(w.cols * 0.08, 9, 14)), pb = place(w, bw * 0.6 + 1, s.ostacoli.concat([s.fontana]), 4);
+      var bx = Math.round(pb.x - bw / 2), by = Math.round(pb.y - 1);
+      for (j = 0; j < 3; j++) {
+        for (i = 0; i < bw; i++) {
+          var ferro = i === 0 || i === bw - 1;
+          s.celle.push(bx + i, by + j, ferro ? 0.45 : j === 1 ? 0.3 : 0.5 + 0.1 * hash2(bx + i, j), ferro ? 7 : 6, 1);
+        }
+      }
+      s.ostacoli.push({ x: pb.x, y: pb.y, r: bw * 0.4 });
+      for (k = 0; k < 3; k++) s.posti.push({ x: bx + 2 + k * (bw - 4) / 2, y: by + 0.5, th: -Math.PI / 2 + (k - 1) * 0.4, taken: null });
+      // gli alberi: chiome tonde, con il bordo frastagliato e la luce da in alto a sinistra
+      s.chiome = [];
+      var na = w.cols * w.rows > 6000 ? 2 : 1;
+      for (k = 0; k < na; k++) {
+        var rc = clamp(Math.min(w.cols, w.rows) * 0.1, 5, 9), pc = place(w, rc + 1, s.ostacoli.concat([s.fontana]), 2);
+        s.chiome.push({ x: pc.x, y: pc.y, r: rc });
+        s.posti.push({ x: pc.x - rc * 0.3, y: pc.y - rc * 0.2, th: w.rnd() * TAU, taken: null });
+        s.posti.push({ x: pc.x + rc * 0.35, y: pc.y + rc * 0.25, th: w.rnd() * TAU, taken: null });
+      }
+      // foglie cadute
+      for (k = 0; k < w.cols * w.rows / 260; k++) {
+        var fx = Math.floor(w.rnd() * w.cols), fy = Math.floor(w.rnd() * w.rows);
+        s.celle.push(fx, fy, 0.35 + 0.2 * w.rnd(), w.rnd() < 0.6 ? 10 : 11, 0.7);
+      }
+      return s;
+    },
+    under: function (w, t, A, s) {
+      var C = this.c0 + this.sc0, f = s.fontana, i, j;
+      drawCells(w, s.selciato, C, A);
+      drawCells(w, s.celle, C, A);
+      // l'acqua: onde che girano piano, ricalcolate 6 volte al secondo
+      var tt = Math.floor(t * 6) / 6, r = f.r - 1.1;
+      for (j = Math.floor(f.y - r); j <= f.y + r; j++) {
+        for (i = Math.floor(f.x - r); i <= f.x + r; i++) {
+          var dx = i + 0.5 - f.x, dy = j + 0.5 - f.y, d = Math.sqrt(dx * dx + dy * dy);
+          if (d >= r) continue;
+          var onda = Math.sin(d * 1.6 - tt * 3) * 0.5 + rumore(i * 0.4 + tt * 0.5, j * 0.4) - 0.5;
+          if (d < 1.3) w.put(i, j, 0.7 + 0.2 * Math.sin(tt * 9 + i), C + 5, A);
+          else w.put(i, j, onda > 0.35 ? 0.45 : 0.22, onda > 0.35 ? C + 5 : C + 4, A * (onda > 0.35 ? 0.8 : 0.7));
+        }
+      }
+      // gli schizzi dello zampillo
+      for (var k = 0; k < 5; k++) {
+        var a = hash2(k, Math.floor(t * 4)) * TAU, rr = 1.5 + 1.5 * hash2(k + 9, Math.floor(t * 4));
+        w.put(Math.floor(f.x + Math.cos(a) * rr), Math.floor(f.y + Math.sin(a) * rr), 0.6, C + 5, A * 0.8);
+      }
+    },
+    // le chiome sopra gli uccellini che passano sotto (quelli posati in cima si disegnano sopra:
+    // put tiene la cella più luminosa)
+    over: function (w, t, A, s) {
+      var C = this.c0 + this.sc0;
+      for (var k = 0; k < s.chiome.length; k++) {
+        var q = s.chiome[k], R = q.r + 1;
+        for (var j = Math.floor(q.y - R); j <= q.y + R; j++) {
+          for (var i = Math.floor(q.x - R); i <= q.x + R; i++) {
+            var dx = i + 0.5 - q.x, dy = j + 0.5 - q.y, d = Math.sqrt(dx * dx + dy * dy), a = Math.atan2(dy, dx);
+            var bordo = q.r * (0.85 + 0.15 * frattale(Math.cos(a) * 2 + k * 5, Math.sin(a) * 2 + t * 0.05, 2));
+            if (d >= bordo) continue;
+            var luce = (-dx - dy) / (q.r * 1.4), foglia = frattale(i * 0.5, j * 0.5, 2);
+            w.put(i, j, 0.28 + 0.2 * luce + 0.15 * foglia, foglia + 0.2 * luce > 0.55 ? C + 9 : C + 8, A * 0.9);
+          }
+        }
+      }
+    },
+    spots: function (w, s) { return s.posti; },
+    obstacles: function (w, s) { return s.ostacoli; }
+  };
+  // ==== fine uccellini ====
 
   /* ------------------------------------------------------------------ */
   /* Paesaggi: sfondi senza animali, gli stessi dello screensaver         */
@@ -3646,7 +3887,7 @@ h1 {
 
   // quanto in alto, rispetto alla taglia, va il nome dell'animale
   var NAME_UP = { farfalle: 0.62, meduse: 0.55, libellule: 0.75, koi: 0.45, rane: 0.45, aironi: 0.8, granchi: 0.5,
-                  cavalli: 0.6, anatre: 0.45, gatti: 0.55, topi: 0.6 };
+                  cavalli: 0.6, anatre: 0.45, gatti: 0.55, topi: 0.6, uccellini: 0.75 };
 
   Object.keys(SCENES).forEach(function (id) {
     var sp = byId(id), sc = SCENES[id];
